@@ -2,6 +2,8 @@
 
 iPhoneとWindowsのクリップボードを、スマートに
 
+公開サイト: https://clipbridge-ashen.vercel.app/
+
 ClipBridgeの紹介サイトと、Windows用のソース配布ファイルです。紹介サイトの操作デモはブラウザ内で完結し、実際の端末へ送信しません。
 
 ## 紹介サイト
