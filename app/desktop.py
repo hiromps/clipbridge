@@ -16,7 +16,7 @@ import tempfile
 import threading
 import time
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
@@ -114,6 +114,17 @@ def health(token: str, base: str = "http://127.0.0.1:8787") -> bool:
             return json.load(response).get("ok") is True
     except (OSError, ValueError):
         return False
+
+
+def local_health_status(token: str) -> int | None:
+    try:
+        request = urllib.request.Request("http://127.0.0.1:8787/api/health", headers={"X-Token": token})
+        with urllib.request.urlopen(request, timeout=3) as response:
+            return response.status
+    except urllib.error.HTTPError as exc:
+        return exc.code
+    except OSError:
+        return None
 
 
 def serve_conflict(config: dict) -> bool:
@@ -315,6 +326,7 @@ class DesktopApp:
             self.text(f"現在のバージョン：{VERSION}\n接続できないときは診断から順番に確認できます。\n更新は内容を確認してから適用します。接続情報は保持されます。")
             self.button("接続を診断する", self.diagnose)
             self.button("ClipBridgeサーバーを起動 / 復旧", lambda: self.background(self.start_server, self.status.set))
+            self.button("旧版・既存の接続情報を引き継ぐ", self.import_connection)
             self.button("HTTPS公開設定を修復する", self.repair)
             self.button("クリップボード画面を開く", self.open_browser)
             self.button("更新を確認する（無料）", self.updates)
@@ -353,12 +365,53 @@ class DesktopApp:
             self.token = server.load_token()
         if health(self.token):
             return "ClipBridgeは起動しています。接続画面を開けます"
+        if local_health_status(self.token) == 401:
+            raise RuntimeError("別の接続情報を使うClipBridgeが起動しています。『旧版・既存の接続情報を引き継ぐ』で、以前のconfig.jsonを選ぶか、旧アプリを終了してください。まだ起動は完了していません")
         try:
             self.server = server.create_server(token=self.token)
         except OSError:
             raise RuntimeError("8787番ポートを別のアプリまたは旧ClipBridgeが使用中です。旧版を終了してから『サーバーを起動 / 復旧』を押してください。iPhoneの既存設定を保持したい場合は、移行手順をREADMEで確認できます")
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
-        return "ClipBridgeを起動しました。ウィンドウを最小化したまま利用できます"
+        for _ in range(10):
+            if health(self.token):
+                return "ClipBridgeを起動しました。ウィンドウを最小化したまま利用できます"
+            time.sleep(.2)
+        self.server.shutdown()
+        self.server.server_close()
+        self.server = None
+        raise RuntimeError("サーバーの起動後に接続を確認できませんでした。ほかのClipBridgeを終了し、もう一度起動してください")
+
+    def import_connection(self):
+        if self.busy:
+            self.status.set("処理が完了してからお試しください")
+            return
+        selected = filedialog.askopenfilename(title="以前のClipBridgeのconfig.jsonを選んでください", filetypes=[("接続設定", "*.json")])
+        if not selected:
+            return
+        try:
+            value = json.loads(Path(selected).read_text(encoding="utf-8-sig"))
+            candidate = value.get("token")
+            if not isinstance(candidate, str) or not re.fullmatch(r"[A-Za-z0-9_-]{16,}", candidate):
+                raise ValueError("有効な接続トークンが見つかりません")
+            status = local_health_status(candidate)
+            if status == 401:
+                raise ValueError("選択した接続情報では、現在のサーバーに接続できません。以前使用していたconfig.jsonを確認してください")
+            if not messagebox.askyesno("接続情報を引き継ぐ", "選択した接続情報を使用します。現在の設定はバックアップします。\niPhoneで使っていた情報を引き継ぐと再設定を省けます。続けますか？"):
+                return
+            if self.server:
+                self.server.shutdown()
+                self.server.server_close()
+                self.server = None
+            config = server.DATA / "config.json"
+            if config.exists():
+                shutil.copy2(config, config.with_name("config.backup-" + str(time.time_ns()) + ".json"))
+            temporary = config.with_suffix(".tmp")
+            temporary.write_text(json.dumps({"token": candidate}), encoding="utf-8")
+            os.replace(temporary, config)
+            self.token = candidate
+            self.background(self.start_server, self.status.set)
+        except (OSError, ValueError) as exc:
+            self.status.set("接続情報を引き継げませんでした：" + str(exc))
 
     def install(self):
         def installed(path):
@@ -381,6 +434,8 @@ class DesktopApp:
         def inspect():
             info = server.connection_info()
             if not self.token or not health(self.token):
+                if self.token and local_health_status(self.token) == 401:
+                    return "サーバーは動いていますが、接続情報が一致しません。『旧版・既存の接続情報を引き継ぐ』で以前のconfig.jsonを選んでください"
                 return "ClipBridgeサーバーに接続できません。『サーバーを起動 / 復旧』を押してください"
             if info["tailscale"] == "missing":
                 return "PCにTailscaleが見つかりません。Windows用をインストールしてください"

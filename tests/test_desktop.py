@@ -150,3 +150,42 @@ def test_repair_never_changes_another_services_config(monkeypatch):
     monkeypatch.setattr(desktop.subprocess, "run", lambda *a, **kw: SimpleNamespace(returncode=0, stdout=json.dumps({"Web": {"pc:443": {"Handlers": {"/": {"Proxy": "http://localhost:3000"}}}}})))
     with pytest.raises(RuntimeError, match="443"):
         desktop.configure_https()
+
+
+def test_only_one_server_can_own_a_port():
+    first = server.create_server(port=0, token="first-token")
+    try:
+        with pytest.raises(OSError):
+            server.create_server(port=first.server_address[1], token="other-token")
+    finally:
+        first.server_close()
+
+
+def test_start_refuses_a_server_with_different_credentials(monkeypatch):
+    app = desktop.DesktopApp.__new__(desktop.DesktopApp)
+    app.token, app.server = "new-token", None
+    monkeypatch.setattr(desktop, "health", lambda _: False)
+    monkeypatch.setattr(desktop, "local_health_status", lambda _: 401)
+    def unexpected(**kwargs):
+        pytest.fail("Must not start another listener after an authentication mismatch")
+    monkeypatch.setattr(server, "create_server", unexpected)
+    with pytest.raises(RuntimeError):
+        app.start_server()
+    assert app.server is None
+
+
+def test_started_server_is_reachable_before_success(monkeypatch):
+    app = desktop.DesktopApp.__new__(desktop.DesktopApp)
+    app.token, app.server = "test-token", None
+    create = server.create_server
+    original_health = desktop.health
+    monkeypatch.setattr(server, "create_server", lambda **kwargs: create(port=0, **kwargs))
+    monkeypatch.setattr(desktop, "local_health_status", lambda _: None)
+    monkeypatch.setattr(desktop, "health", lambda token: bool(app.server) and original_health(token, f"http://127.0.0.1:{app.server.server_address[1]}"))
+    try:
+        assert app.start_server()
+        assert desktop.health(app.token)
+    finally:
+        if app.server:
+            app.server.shutdown()
+            app.server.server_close()

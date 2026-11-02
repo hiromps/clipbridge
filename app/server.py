@@ -319,7 +319,16 @@ def create_server(port: int = PORT, token: str | None = None) -> ThreadingHTTPSe
         do_DELETE = do_PUT
         do_PATCH = do_PUT
 
-    return ThreadingHTTPServer((HOST, port), Handler)
+    class ExclusiveHTTPServer(ThreadingHTTPServer):
+        def server_bind(self):
+            if sys.platform == "win32":
+                # SO_REUSEADDR permits duplicate listeners on Windows. Requests
+                # could then reach an older instance with a different token.
+                self.allow_reuse_address = False
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            super().server_bind()
+
+    return ExclusiveHTTPServer((HOST, port), Handler)
 
 
 def main() -> None:
