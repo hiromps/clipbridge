@@ -4,7 +4,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = [
-    "desktop.py", "release_info.py", "WINDOWS-README.txt",
+    "desktop.py", "native_ui.py", "release_info.py", "WINDOWS-README.txt",
     "server.py", "ClipBridge.bat", "launch_clipbridge.ps1", "setup_tailscale.ps1",
     "install_startup.ps1", "make_icon.py", "README.md", "requirements.txt",
     "web/index.html", "web/manifest.webmanifest", "web/icon-180.png",

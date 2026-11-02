@@ -23,6 +23,7 @@ from urllib.parse import urlsplit
 import webbrowser
 
 import server
+from native_ui import Pill, rounded, SURFACE, CANVAS, INK, MUTED
 from release_info import VERSION, UPDATE_URL, RELEASES_URL
 
 NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
@@ -192,23 +193,49 @@ class DesktopApp:
         self.state = read_state()
         self.page = int(self.state.get("step", 0)) if self.state.get("step", 0) in range(4) else 0
         self.root.title(f"ClipBridge {VERSION} — 無料のセットアップ")
-        self.root.geometry("760x720")
+        self.root.geometry("820x780")
         self.root.minsize(650, 650)
         self.root.configure(bg="#eceef1")
         style = ttk.Style()
         style.theme_use("clam")
         style.configure("TFrame", background="#f3f4f6")
-        style.configure("TLabel", background="#f3f4f6", foreground="#1c2b3a", font=("Yu Gothic UI", 11))
-        style.configure("Title.TLabel", font=("Yu Gothic UI", 23, "bold"))
+        style.configure("TLabel", background=SURFACE, foreground=MUTED, font=("Yu Gothic UI", 10))
+        style.configure("Title.TLabel", foreground=INK, font=("Yu Gothic UI", 23, "bold"))
+        style.configure("Eyebrow.TLabel", foreground="#8b98a6", font=("Segoe UI", 8, "bold"))
+        style.configure("Horizontal.TProgressbar", background="#a3e063", troughcolor="#e8ecf0", borderwidth=0, lightcolor="#a3e063", darkcolor="#a3e063")
+        style.configure("Vertical.TScrollbar", background="#d9e0e6", troughcolor=SURFACE, borderwidth=0, arrowcolor=MUTED)
         style.configure("TButton", font=("Yu Gothic UI", 10), padding=(13, 9))
-        self.frame = ttk.Frame(root, padding=30)
-        self.frame.pack(fill="both", expand=True, padx=20, pady=20)
-        ttk.Label(self.frame, text="ClipBridge", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(self.frame, text="iPhoneとWindowsのクリップボードを、スマートに").pack(anchor="w", pady=(2, 18))
+        shell = tk.Canvas(root, bg=CANVAS, highlightthickness=0, borderwidth=0)
+        shell.pack(fill="both", expand=True, padx=20, pady=20)
+        self.frame = ttk.Frame(shell, padding=0)
+        frame_window = shell.create_window((30,28), window=self.frame, anchor="nw")
+        def resize_shell(event):
+            shell.delete("surface")
+            rounded(shell, 0, 0, event.width, event.height, 29, fill=SURFACE, outline="", tags="surface")
+            shell.tag_lower("surface")
+            shell.itemconfigure(frame_window, width=max(200,event.width-60), height=max(200,event.height-56))
+        shell.bind("<Configure>", resize_shell)
+        brand = ttk.Frame(self.frame)
+        brand.pack(fill="x", pady=(0,18))
+        mark = tk.Canvas(brand, width=41, height=32, bg=SURFACE, highlightthickness=0)
+        mark.pack(side="left", padx=(0,10))
+        mark.create_oval(2,5,25,28,outline=INK,width=3)
+        mark.create_oval(15,5,38,28,outline="#007be5",width=3)
+        ttk.Label(brand, text="ClipBridge", foreground=INK, font=("Segoe UI",17,"bold")).pack(side="left")
+        ttk.Label(brand, text=f"FREE  /  {VERSION}", style="Eyebrow.TLabel").pack(side="right")
+        ttk.Label(self.frame, text="YOUR EVERYDAY CLIPBOARD", style="Eyebrow.TLabel").pack(anchor="w", pady=(0,8))
+        heading = ttk.Frame(self.frame)
+        heading.pack(anchor="w")
+        ttk.Label(heading, text="iPhoneとWindowsを、", foreground=INK, font=("Yu Gothic UI",18,"bold")).pack(side="left")
+        ttk.Label(heading, text="スマートに", background="#c0e79e", foreground=INK, font=("Yu Gothic UI",18,"bold")).pack(side="left")
+        ttk.Label(self.frame, text="接続の準備も、日々の更新も。すべて無料で。", font=("Yu Gothic UI",10)).pack(anchor="w", pady=(10,22))
         self.navigation = ttk.Frame(self.frame)
         self.navigation.pack(fill="x")
-        for i, name in enumerate(("1 アプリ", "2 Tailscale", "3 iPhone", "診断・更新")):
-            ttk.Button(self.navigation, text=name, command=lambda n=i: self.show(n)).pack(side="left", expand=True, fill="x", padx=2)
+        self.nav_buttons = []
+        for i, name in enumerate(("01 アプリ", "02 Tailscale", "03 iPhone", "診断・更新")):
+            button = Pill(self.navigation, name, lambda n=i: self.show(n), compact=True)
+            button.pack(side="left", expand=True, fill="x", padx=3)
+            self.nav_buttons.append(button)
         viewport = ttk.Frame(self.frame)
         viewport.pack(fill="both", expand=True, pady=(20, 8))
         self.canvas = tk.Canvas(viewport, bg="#f3f4f6", borderwidth=0, highlightthickness=0)
@@ -227,7 +254,8 @@ class DesktopApp:
         self.canvas.bind("<Configure>", lambda event: self.canvas.itemconfigure(content_window, width=event.width))
         self.root.bind_all("<MouseWheel>", lambda event: self.canvas.yview_scroll(-int(event.delta / 120), "units"))
         self.status = tk.StringVar(value="")
-        ttk.Label(self.frame, textvariable=self.status, wraplength=640).pack(anchor="w", pady=(8, 0))
+        ttk.Separator(self.frame, orient="horizontal").pack(fill="x", pady=(12,10))
+        ttk.Label(self.frame, textvariable=self.status, wraplength=640, font=("Yu Gothic UI",9)).pack(anchor="w", pady=(2, 0))
         self.progress = ttk.Progressbar(self.frame, mode="indeterminate")
         self.progress.pack(fill="x", pady=(10, 0))
         self.root.protocol("WM_DELETE_WINDOW", self.close)
@@ -236,16 +264,22 @@ class DesktopApp:
         self.background(self.start_server, lambda text: self.status.set(text))
 
     def text(self, value, title=False):
-        ttk.Label(self.content, text=value, wraplength=630, style="Title.TLabel" if title else "TLabel").pack(anchor="w", pady=(0, 13))
+        ttk.Label(self.content, text=value, wraplength=630, style="Title.TLabel" if title else "TLabel").pack(anchor="w", pady=(0, 18))
 
     def button(self, text, command):
-        ttk.Button(self.content, text=text, command=command).pack(fill="x", pady=4)
+        primary = self.action_count == 0
+        self.action_count += 1
+        Pill(self.content, text, command, primary=primary).pack(fill="x", pady=(2,8))
 
     def show(self, page):
         if getattr(self, "busy", False):
             self.status.set("処理が完了してから画面を切り替えてください")
             return
         self.page = page
+        self.action_count = 0
+        for index, button in enumerate(getattr(self, "nav_buttons", [])):
+            button.selected = index == page
+            button.draw()
         self.state = read_state()
         self.state["step"] = page
         save_state(self.state)
