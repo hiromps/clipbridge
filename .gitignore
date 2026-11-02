@@ -6,3 +6,5 @@ node_modules/
 app/config.json
 __pycache__/
 .pytest_cache/
+build/
+*.spec

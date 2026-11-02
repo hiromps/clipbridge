@@ -7,6 +7,7 @@ import base64
 import io
 import hmac
 import json
+import os
 import secrets
 import shutil
 import socket
@@ -108,6 +109,8 @@ except ModuleNotFoundError:
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
+DATA = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "ClipBridge" if getattr(sys, "frozen", False) else ROOT
+DATA.mkdir(parents=True, exist_ok=True)
 MAX_BYTES = 1024 * 1024
 HOST = "127.0.0.1"
 PORT = 8787
@@ -119,7 +122,7 @@ def console_message(message: str) -> None:
         print(message, flush=True)
 
 
-def load_token(path: Path = ROOT / "config.json") -> str:
+def load_token(path: Path = DATA / "config.json") -> str:
     if not path.exists():
         token = secrets.token_urlsafe(32)
         try:
@@ -134,10 +137,15 @@ def load_token(path: Path = ROOT / "config.json") -> str:
     return token
 
 
+def tailscale_path() -> str | None:
+    installed = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Tailscale/tailscale.exe"
+    return str(installed) if installed.is_file() else shutil.which("tailscale")
+
+
 def magic_dns_name() -> str | None:
     try:
         result = subprocess.run(
-            ["tailscale", "status", "--json"], capture_output=True, text=True,
+            [tailscale_path() or "tailscale", "status", "--json"], capture_output=True, text=True,
             timeout=5, check=True,
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
@@ -150,11 +158,11 @@ def connection_info() -> dict:
     """Diagnose this PC only; never infer the iPhone's VPN state."""
     info = {"pc_name": socket.gethostname(), "tailscale": "missing", "dns_name": None,
             "https_ready": None}
-    if not shutil.which("tailscale"):
+    if not tailscale_path():
         return info
     def run_json(*args):
         result = subprocess.run(
-            ["tailscale", *args], capture_output=True, text=True, timeout=5, check=True,
+            [tailscale_path(), *args], capture_output=True, text=True, timeout=5, check=True,
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
         return json.loads(result.stdout)

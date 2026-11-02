@@ -95,7 +95,7 @@
       </div>
       <div class="prep-item" data-prep-step="https-configured">
         <label class="prep-check"><input type="checkbox" data-prep-check="https-configured"><span>PCの公開設定を済ませた</span></label>
-        <div class="prep-content"><p class="help">PCのセットアップ手順に従ってMagicDNSとHTTPS Certificatesを有効にし、ClipBridgeフォルダの setup_tailscale.ps1 を実行します。「接続テスト」で状態を確認できます。</p></div>
+        <div class="prep-content"><p class="help">PCのClipBridgeアプリで「Tailscale」→「HTTPS・DNSの設定を開く」を確認し、「HTTPS公開設定を実行 / 修復」を押します。Windowsの管理者確認が出たら許可してください。「接続テスト」で状態を確認できます。</p></div>
       </div>
     </div>
     <p id="pcDiagnosis" class="small-status" role="status">PCの状態は「接続テスト」で確認できます。</p>
@@ -263,7 +263,7 @@
       else if (data.tailscale === 'disconnected') detail = 'PCのTailscaleが未接続です。Tailscaleを開いてログインし、接続をオンにしてください。';
       else if (data.tailscale === 'unknown') detail = 'ClipBridgeには接続できていますが、PCのTailscaleの状態を取得できません。PCでTailscaleを確認してください。';
       else if (!data.dns_name) detail = 'PCの接続用アドレスが見つかりません。TailscaleのMagicDNS設定を確認してください。';
-      else if (data.https_ready === false) detail = 'PCのHTTPS公開設定が未完了です。PCで setup_tailscale.ps1 を実行してください。';
+      else if (data.https_ready === false) detail = 'PCのHTTPS公開設定が未完了です。PCのClipBridgeアプリで「HTTPS公開設定を実行 / 修復」を押してください。';
       else if (data.https_ready === null) detail = 'PCのTailscaleは接続中です。HTTPS公開設定は確認できませんでした。iPhoneでQRコードから開けるか確認してください。';
       else detail = isHost ? 'このPCのTailscaleとHTTPS公開設定は準備できています。iPhone側の接続はQRコードから開いて確認します。' : 'PCへの接続を確認できました。PCのTailscaleとHTTPS公開設定も準備できています。';
       const ready = data.tailscale === 'connected' && !!data.dns_name && data.https_ready === true;
@@ -410,10 +410,10 @@
     $('connectionState').textContent = '接続設定が必要です';
     $('connectionState').className = 'status error';
     if (!isPhone) {
-      authError.textContent = 'このPCのブラウザに接続情報がありません。デスクトップの「ClipBridge」またはフォルダ内の「ClipBridge.bat」を開き直してください。接続情報付きで画面が開きます。';
+      authError.textContent = 'このPCのブラウザに接続情報がありません。デスクトップのClipBridgeを開き、「クリップボード画面を開く」を押してください。接続情報付きで画面が開きます。';
       setupCard.querySelector('h2').textContent = 'このPCの接続設定';
       setupCard.querySelector('.help').textContent = 'PCとiPhoneの接続情報は別々に保存されます。PCでは「ClipBridge」から起動すると設定できます。別のブラウザを使う場合は、認証情報付きセットアップURLを下へ貼り付けてください。';
-      trouble('PCではClipBridgeから開き直してください', 'アドレスだけを直接開くと、認証情報がない場合があります。デスクトップの「ClipBridge」または「ClipBridge.bat」を開き直してください。iPhoneの接続を設定し直す必要はありません。');
+      trouble('PCではClipBridgeから開き直してください', 'アドレスだけを直接開くと、認証情報がない場合があります。PCのClipBridgeアプリで「クリップボード画面を開く」を押してください。iPhoneの接続を設定し直す必要はありません。');
     } else {
       trouble('接続情報を設定してください', 'PCの「接続管理」にあるQRコードを読み取るか、認証情報付きセットアップURLを下の欄へ貼り付けてください。');
     }
