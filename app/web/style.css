@@ -284,3 +284,43 @@ details[open] summary { margin-bottom: 8px; }
 
 a.btn { text-decoration: none; }
 .toast.ok { background: var(--ok); color: #fff; }
+
+/* PC 切り替え（iPhone 画面の上部） */
+.switcher {
+  border: 1px solid var(--line); cursor: pointer; font: inherit; font-size: 0.85rem; font-weight: 700;
+  min-height: 36px; max-width: min(60vw, 260px);
+}
+.switcher #pcSwitchName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.switcher .chev { color: var(--muted); font-size: 0.8em; flex: none; }
+.menu {
+  position: absolute; right: var(--pad); top: calc(100% - 2px); z-index: 30;
+  width: min(calc(100vw - 2 * var(--pad)), 380px);
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+  padding: 12px; display: grid; gap: 10px;
+}
+.menu-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-weight: 700; font-size: 0.9rem; }
+.pc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.pc-item { display: flex; align-items: center; gap: 8px; border-radius: 12px; min-width: 0; }
+.pc-item.active { background: var(--accent-soft); }
+.pc-pick {
+  flex: 1 1 auto; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 10px;
+  border: 0; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; border-radius: 12px; min-width: 0;
+}
+.pc-item.active .pc-pick::after { content: "✓"; margin-left: auto; color: var(--accent); font-weight: 800; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.ok { background: var(--ok); }
+.dot.warn { background: var(--warn); }
+.dot.err { background: var(--err); }
+.pc-text { display: grid; gap: 1px; min-width: 0; }
+.pc-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-sub { color: var(--muted); font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-remove { flex: none; padding: 8px 10px; min-height: 44px; }
+.pc-list.plain .pc-item { padding: 10px 12px; background: var(--bg); gap: 12px; }
+.pc-list.plain .pc-item .pc-text { flex: 1 1 auto; }
+.pc-list.plain .pc-item .btn { flex: none; min-height: 40px; padding: 6px 14px; }
+.text-input {
+  width: 100%; min-height: 48px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--text); font: inherit; font-size: 16px;
+}
+.help .label, .help .text-input, .help .btn { margin-top: 8px; }

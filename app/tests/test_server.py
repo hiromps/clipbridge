@@ -728,3 +728,96 @@ def test_parser_accepts_legacy_launcher_options():
     args = server.build_parser().parse_args(["--minimized", "--install", "--wait-pid", "42", "--no-serve", "--no-update-check"])
     assert args.minimized and args.install and args.wait_pid == 42 and args.no_serve and args.no_update_check
     assert server.wait_for_process(server.os.getpid()) is True  # 自分自身は待たない
+
+
+# ---------------------------------------------------------------------------
+# 複数 PC（ハブ画面からのクロスオリジン呼び出し、他 PC の探索、Service Worker）
+# ---------------------------------------------------------------------------
+
+HUB = "https://other-pc.example.ts.net"
+
+
+def test_cors_allows_only_same_tailnet_origins(app):
+    base, token = app.base, app.token
+    status, headers, _ = request(base, "/api/clip", token=token, headers={"Origin": HUB})
+    assert status == 200 and headers.get("Access-Control-Allow-Origin") == HUB and "Origin" in headers.get("Vary", "")
+    status, headers, _ = request(base, "/api/clip", token=token, headers={"Origin": "https://evil.example"})
+    assert status == 200 and "Access-Control-Allow-Origin" not in headers
+    status, headers, _ = request(base, "/api/clip", token=token, headers={"Origin": "http://other-pc.example.ts.net"})
+    assert "Access-Control-Allow-Origin" not in headers  # https 以外は不可
+    # 書き込みも同じ tailnet のハブからなら通る
+    assert request(base, "/api/clip", method="POST", token=token, data=b"from hub", headers={"Origin": HUB})[0] == 200
+    assert app.fake_clipboard.text == "from hub"
+    # プリフライト
+    status, headers, _ = request(base, "/api/pair", method="OPTIONS", headers={"Origin": HUB, "Access-Control-Request-Method": "POST"})
+    assert status == 204 and headers["Access-Control-Allow-Origin"] == HUB
+    assert "X-Token" in headers["Access-Control-Allow-Headers"] and "POST" in headers["Access-Control-Allow-Methods"]
+    assert request(base, "/api/pair", method="OPTIONS", headers={"Origin": "https://evil.example"})[0] == 403
+    assert request(base, "/pc/api/status", method="OPTIONS", headers={"Origin": HUB})[0] == 403
+    # 管理操作は他 PC のハブ画面からは不可
+    assert request(base, "/pc/api/pair-code", method="POST", json_body={}, headers={"X-ClipBridge": "1", "Origin": HUB})[0] == 403
+
+
+def test_pair_from_hub_origin(app):
+    code = app.pairing.info()["code"]
+    status, headers, body = request(app.base, "/api/pair", method="POST", json_body={"code": code}, headers={"Origin": HUB})
+    assert status == 200 and as_json(body)["token"] == app.token and headers["Access-Control-Allow-Origin"] == HUB
+
+
+def test_health_includes_pc_name(app):
+    _, _, body = request(app.base, "/api/health")
+    assert as_json(body)["pc_name"] == app.pc_name
+
+
+def test_tailnet_peers_filters_offline_and_phones():
+    status = ts_status()
+    status["Peer"] = {
+        "a": {"HostName": "desk", "DNSName": "desk.example.ts.net.", "Online": True, "OS": "windows"},
+        "b": {"HostName": "laptop", "DNSName": "laptop.example.ts.net.", "Online": False, "OS": "windows"},
+        "c": {"HostName": "phone", "DNSName": "phone.example.ts.net.", "Online": True, "OS": "iOS"},
+        "d": {"HostName": "nas", "DNSName": "", "Online": True, "OS": "linux"},
+    }
+    peers = server.tailnet_peers(status)
+    assert [peer["dns"] for peer in peers] == ["desk.example.ts.net"]
+    assert server.tailnet_peers(None) == []
+
+
+def test_peers_endpoint_probes_other_pcs(app):
+    status = ts_status()
+    status["Peer"] = {
+        "a": {"HostName": "desk", "DNSName": "desk.example.ts.net.", "Online": True, "OS": "windows"},
+        "b": {"HostName": "laptop", "DNSName": "laptop.example.ts.net.", "Online": True, "OS": "windows"},
+        "me": {"HostName": "pc", "DNSName": DNS + ".", "Online": True, "OS": "windows"},
+    }
+    app.fake_tailscale._status = status
+    probed = []
+
+    def fake_probe(url):
+        probed.append(url)
+        if url == "https://desk.example.ts.net:8443/":
+            return {"ok": True, "app": "ClipBridge", "version": "2.1.0", "pc_name": "Desk-PC"}
+        return None
+
+    app.probe = fake_probe
+    assert request(app.base, "/api/peers")[0] == 401
+    status_code, _, body = request(app.base, "/api/peers", token=app.token)
+    assert status_code == 200
+    payload = as_json(body)
+    assert payload["peers"] == [{"name": "Desk-PC", "host": "desk", "url": "https://desk.example.ts.net:8443/", "version": "2.1.0"}]
+    assert payload["self"]["name"] == app.pc_name
+    assert not any(DNS in url for url in probed)  # 自分自身は探さない
+    assert any(url.startswith("https://laptop.example.ts.net") for url in probed)
+    # 20 秒はキャッシュされる
+    before = len(probed)
+    request(app.base, "/api/peers", token=app.token)
+    assert len(probed) == before
+    request(app.base, "/api/peers?refresh=1", token=app.token)
+    assert len(probed) > before
+
+
+def test_service_worker_script_carries_version(app):
+    status, headers, body = request(app.base, "/sw.js")
+    assert status == 200 and headers["Content-Type"].startswith("text/javascript")
+    text = body.decode("utf-8")
+    assert f"'{server.__version__}'" in text and "__VERSION__" not in text
+    assert "'/api" not in text and "'/pc" not in text  # API と PC 画面はキャッシュ対象に含めない

@@ -16,12 +16,15 @@
   - PC 用の管理画面 /pc は「ループバックから直接」来たリクエストにだけ応答する
   - ペアリングは 6 桁コード（QR にも埋め込む）。成功または 5 回失敗でコードを更新する
   - PC のクリップボード変化は SSE (/api/events) で iPhone にプッシュする
+  - 複数 PC: iPhone は 1 台目の PC の画面（ハブ）から他の PC の API を直接呼ぶ。そのため /api/* は
+    同じ tailnet のオリジンからのクロスオリジン呼び出し（CORS）を許し、/api/peers で他の PC を探せる
   - クリップボードの中身・トークン・コードはログに出さない
 """
 
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import hashlib
 import hmac
 import html
@@ -43,7 +46,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 APP_NAME = "ClipBridge"
 FROZEN = bool(getattr(sys, "frozen", False))  # PyInstaller でビルドした exe 版か
 ROOT = Path(__file__).resolve().parent
@@ -525,6 +528,31 @@ def summarize_tailscale(installed: bool, status: dict | None, serve: dict | None
         "planned_url": public_url(dns, https_port) if (dns and https_port) else None,
         "ready": ready,
     }
+
+
+def tailnet_peers(status: dict | None) -> list[dict]:
+    """tailscale status の Peer 一覧から、ClipBridge が動いていそうな候補（オンラインの PC）を抜き出す。"""
+    peers: list[dict] = []
+    for peer in ((status or {}).get("Peer") or {}).values():
+        dns = (peer.get("DNSName") or "").rstrip(".")
+        if not dns or not peer.get("Online"):
+            continue
+        os_name = (peer.get("OS") or "").lower()
+        if os_name and os_name not in ("windows", "linux", "macos", "darwin"):
+            continue  # iPhone / Android などは対象外
+        peers.append({"host": peer.get("HostName") or dns.split(".")[0], "dns": dns, "os": os_name})
+    return peers
+
+
+def probe_clipbridge(url: str, opener=urllib.request.urlopen, timeout: float = 2.0) -> dict | None:
+    """url（https://pc.tailnet.ts.net/ など）で ClipBridge が応答するか確認し、health の内容を返す。"""
+    request = urllib.request.Request(url + "api/health", headers={"User-Agent": f"{APP_NAME}/{__version__}"})
+    try:
+        with opener(request, timeout=timeout) as response:
+            data = json.loads(response.read(4096).decode("utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) and data.get("app") == APP_NAME else None
 
 
 # ---------------------------------------------------------------------------
@@ -1078,6 +1106,7 @@ class ClipBridgeApp:
         watch_interval: float = WATCH_INTERVAL,
         web_dir: Path = WEB_DIR,
         updater: Updater | None = None,
+        probe=None,
     ) -> None:
         self.port = port
         self.config_path = config_path
@@ -1093,6 +1122,11 @@ class ClipBridgeApp:
         self.tailscale = tailscale or Tailscale()
         self._ts_lock = threading.Lock()
         self._ts_cache: tuple[float, dict | None] = (0.0, None)
+        self._ts_status: dict | None = None
+        self._suffix_cache: tuple[float, str | None] = (0.0, None)
+        self._peers_lock = threading.Lock()
+        self._peers_cache: tuple[float, dict | None] = (0.0, None)
+        self.probe = probe or probe_clipbridge
         self.serve_result: dict | None = None
         self.stopping = False
         self.started = time.time()
@@ -1160,7 +1194,52 @@ class ClipBridgeApp:
         summary = summarize_tailscale(installed, status, serve, self.port)
         with self._ts_lock:
             self._ts_cache = (time.time(), summary)
+            self._ts_status = status
         return summary
+
+    def tailnet_suffix(self) -> str | None:
+        """自分の MagicDNS 名から tailnet のドメイン（例 tail30626c.ts.net）を得る。CORS の許可判定に使う。"""
+        cached_at, cached = self._suffix_cache
+        if cached is not None and time.time() - cached_at < 60:
+            return cached
+        dns = self.tailscale_summary().get("dns_name") or ""
+        suffix = dns.split(".", 1)[1].lower() if "." in dns else None
+        if suffix:
+            self._suffix_cache = (time.time(), suffix)
+        return suffix
+
+    def discover_peers(self, force: bool = False) -> dict:
+        """同じ tailnet で ClipBridge が動いている他の PC を探す（iPhone 画面の「PC を追加」用）。"""
+        with self._peers_lock:
+            cached_at, cached = self._peers_cache
+            if not force and cached is not None and time.time() - cached_at < 20:
+                return cached
+        summary = self.tailscale_summary(force=force)
+        own = summary.get("dns_name")
+        candidates = [peer for peer in tailnet_peers(self._ts_status) if peer["dns"] != own]
+        urls = [(peer, public_url(peer["dns"], port)) for peer in candidates for port in HTTPS_PORTS]
+        found: list[dict] = []
+        if urls:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(16, len(urls))) as pool:
+                results = list(pool.map(lambda item: (item[0], item[1], self.probe(item[1])), urls))
+            seen: set[str] = set()
+            for peer, url, health in results:
+                if health and peer["dns"] not in seen:
+                    seen.add(peer["dns"])
+                    found.append({
+                        "name": health.get("pc_name") or peer["host"],
+                        "host": peer["host"],
+                        "url": url,
+                        "version": health.get("version"),
+                    })
+        result = {
+            "self": {"name": self.pc_name, "url": summary.get("public_url"), "version": __version__},
+            "peers": sorted(found, key=lambda peer: peer["name"].lower()),
+            "checked_at": time.time(),
+        }
+        with self._peers_lock:
+            self._peers_cache = (time.time(), result)
+        return result
 
     def ensure_serve(self) -> dict:
         """Tailscale Serve で HTTPS 公開を設定する（他サービスの設定は上書きしない）。"""
@@ -1331,6 +1410,10 @@ def make_handler(app: ClipBridgeApp):
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
+            cors = self._cors_origin()
+            if cors:
+                self.send_header("Access-Control-Allow-Origin", cors)
+                self.send_header("Vary", "Origin")
             for key, value in (extra or {}).items():
                 self.send_header(key, value)
             self.end_headers()
@@ -1384,9 +1467,23 @@ def make_handler(app: ClipBridgeApp):
             hosts.discard("")
             return parsed.netloc.lower() in hosts
 
+        def _cors_origin(self) -> str | None:
+            """/api/* に対して、同じ tailnet の別 PC で動く ClipBridge 画面（ハブ）からの呼び出しを許す Origin を返す。"""
+            origin = self.headers.get("Origin")
+            if not origin or not urlsplit(self.path).path.startswith("/api/"):
+                return None
+            if self._host_matches(origin):
+                return origin
+            parsed = urlsplit(origin)
+            suffix = app.tailnet_suffix()
+            host = (parsed.hostname or "").lower()
+            if parsed.scheme == "https" and suffix and host.endswith("." + suffix):
+                return origin
+            return None
+
         def _origin_ok(self) -> bool:
             origin = self.headers.get("Origin")
-            return origin is None or self._host_matches(origin)
+            return origin is None or self._cors_origin() is not None
 
         def _is_admin(self) -> bool:
             """PC 自身のブラウザーから直接（プロキシ経由でなく）来たリクエストか。"""
@@ -1401,8 +1498,9 @@ def make_handler(app: ClipBridgeApp):
         def _admin_post_ok(self) -> bool:
             if self.headers.get("X-ClipBridge") != "1":
                 return False
-            if not self._origin_ok():
-                return False
+            origin = self.headers.get("Origin")
+            if origin is not None and not self._host_matches(origin):
+                return False  # 管理操作は PC 自身の画面からのみ（他 PC のハブ画面からは不可）
             fetch_site = self.headers.get("Sec-Fetch-Site")
             return fetch_site in (None, "same-origin", "none")
 
@@ -1438,7 +1536,13 @@ def make_handler(app: ClipBridgeApp):
                 # iOS Safari が慣例的に探しに来るサイズ違いのアイコン名をまとめて返す
                 return self._file("icon-180.png", "image/png")
             if path == "/api/health":
-                return self._json(200, {"ok": True, "app": APP_NAME, "version": __version__})
+                return self._json(200, {"ok": True, "app": APP_NAME, "version": __version__, "pc_name": app.pc_name})
+            if path == "/api/peers":
+                if not self._require_token():
+                    return
+                return self._json(200, app.discover_peers(force=query.get("refresh") == "1"))
+            if path == "/sw.js":
+                return self._serve_sw()
             if path == "/api/clip":
                 if not self._require_token():
                     return
@@ -1461,6 +1565,28 @@ def make_handler(app: ClipBridgeApp):
             return self._not_found()
 
         do_HEAD = do_GET
+
+        def do_OPTIONS(self) -> None:
+            """CORS プリフライト。同じ tailnet のハブ画面からの /api/* だけ許す。"""
+            origin = self._cors_origin()
+            if origin is None:
+                return self._error(403, "forbidden", "許可されていない Origin です")
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "X-Token, Content-Type")
+            self.send_header("Access-Control-Max-Age", "600")
+            self.send_header("Vary", "Origin")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def _serve_sw(self) -> None:
+            """Service Worker。版をキャッシュ名に埋め込み、更新のたびに古いキャッシュが捨てられるようにする。"""
+            path = app.web_dir / "sw.js"
+            if not path.is_file():
+                return self._not_found()
+            script = path.read_text(encoding="utf-8").replace("__VERSION__", __version__)
+            self._send(200, script.encode("utf-8"), "text/javascript; charset=utf-8")
 
         def _serve_index(self, query: dict[str, str]) -> None:
             if self._is_admin() and not query:
@@ -1508,6 +1634,10 @@ def make_handler(app: ClipBridgeApp):
                 self.send_header("Cache-Control", "no-store")
                 self.send_header("X-Accel-Buffering", "no")
                 self.send_header("Connection", "close")
+                cors = self._cors_origin()
+                if cors:
+                    self.send_header("Access-Control-Allow-Origin", cors)
+                    self.send_header("Vary", "Origin")
                 self.end_headers()
                 self.wfile.write(b"retry: 3000\n\n")
                 self._sse_event("clip", app.state.snapshot())

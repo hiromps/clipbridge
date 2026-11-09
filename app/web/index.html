@@ -18,6 +18,14 @@
   <header class="topbar">
     <div class="brand"><img src="/icon-180.png" alt="" width="30" height="30"><span>ClipBridge</span></div>
     <div id="conn" class="pill" aria-live="polite">確認中…</div>
+    <button id="pcSwitch" class="pill switcher" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="pcMenu" hidden>
+      <span id="pcSwitchName">—</span><span class="chev" aria-hidden="true">▾</span>
+    </button>
+    <div id="pcMenu" class="menu" hidden>
+      <div class="menu-head"><span>接続先の PC</span><span id="pcMenuStatus" class="meta"></span></div>
+      <ul id="pcList" class="pc-list" role="menu"></ul>
+      <button id="addPcBtn" class="btn block" type="button">＋ PC を追加</button>
+    </div>
   </header>
 
   <main>
@@ -80,9 +88,40 @@
           <h2 id="connTitle">接続</h2>
           <span id="pcName" class="meta"></span>
         </div>
-        <button id="unpairBtn" class="btn ghost danger block" type="button">この iPhone の接続を解除</button>
+        <button id="addFromSettingsBtn" class="btn block" type="button">別の PC を追加する</button>
+        <p class="hint">複数の PC を登録すると、画面上部の PC 名をタップして切り替えられます。</p>
+        <button id="unpairBtn" class="btn ghost danger block" type="button">この PC の接続を解除</button>
         <p class="hint">解除すると、再接続には PC の画面に表示されているコードが必要です。</p>
       </section>
+    </section>
+
+    <!-- PC の追加 -->
+    <section id="addView" class="view" hidden>
+      <div class="intro">
+        <h1>PC を追加</h1>
+        <p class="lead">同じ Tailscale ネットワークで ClipBridge が動いている PC を探します。追加したい PC の画面に表示されている<strong>6 桁のコード</strong>を入力してください。</p>
+      </div>
+      <section class="card" aria-labelledby="peersTitle">
+        <div class="card-head">
+          <h2 id="peersTitle">見つかった PC</h2>
+          <button id="peersRefreshBtn" class="link" type="button">再検索</button>
+        </div>
+        <ul id="peerList" class="pc-list plain"></ul>
+        <details class="help">
+          <summary>一覧に出ない PC を URL で追加</summary>
+          <label class="label" for="peerUrlInput">PC の URL（その PC のセットアップ画面「iPhone で開く URL」）</label>
+          <input id="peerUrlInput" class="text-input" type="url" inputmode="url" placeholder="https://pc-name.tailxxxx.ts.net/" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <button id="peerUrlBtn" class="btn block" type="button">この URL の PC を選ぶ</button>
+        </details>
+      </section>
+      <form id="addForm" class="card" autocomplete="off" hidden>
+        <p class="label">選んだ PC: <strong id="addTargetName"></strong></p>
+        <label class="label" for="addCodeInput">その PC の画面に表示されているペアリングコード</label>
+        <input id="addCodeInput" class="code-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000" aria-describedby="addMsg">
+        <button id="addButton" class="btn primary big" type="submit">追加して切り替える</button>
+        <p id="addMsg" class="msg" role="alert" aria-live="polite"></p>
+      </form>
+      <button id="addCancelBtn" class="btn ghost block" type="button">戻る</button>
     </section>
   </main>
 
