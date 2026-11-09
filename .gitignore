@@ -1,10 +1,22 @@
-.openai/
-.vercel/
-node_modules/
-*.log
-.env*
+# ローカルの設定（接続トークンを含む。共有しない）
 app/config.json
-__pycache__/
-.pytest_cache/
+app/config.json.tmp
+config.json
+
+# ビルド・キャッシュ
 build/
 *.spec
+__pycache__/
+.pytest_cache/
+.uv-cache/
+*.pyc
+*.log
+
+# 旧版（1.x）の退避フォルダー（ローカルのみ。履歴はタグ v1.1.2 にある）
+_legacy_v1/
+
+# ツール
+.vercel/
+.openai/
+node_modules/
+.env*

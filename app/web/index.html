@@ -3,559 +3,129 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#eceef1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#2563eb">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="apple-mobile-web-app-title" content="ClipBridge">
+  <link rel="manifest" href="__MANIFEST_HREF__">
   <link rel="apple-touch-icon" href="/icon-180.png">
   <link rel="icon" type="image/png" href="/icon-180.png">
+  <link rel="stylesheet" href="/style.css">
   <title>ClipBridge</title>
-  <style>
-    :root{color-scheme:light;--bg:#eceef1;--card:#f3f4f6;--text:#1c2b3a;--muted:#6b7280;--line:#dfe4e9;--blue:#007be5;--blue-text:#fff;--soft:#e8f1ff;--success:#297146;--error:#ac3545;--shadow:0 1.1px 2.75px rgba(181,187,203,.31),0 11.54px 7.15px rgba(181,188,203,.16),0 20.89px 8.25px rgba(181,188,203,.05),0 32.98px 9.34px rgba(181,193,203,.01)}
-    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.7 Inter,"Noto Sans JP",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}button,input,textarea{font:inherit}button,a,input,textarea{-webkit-tap-highlight-color:transparent}button,a{touch-action:manipulation}main{max-width:1040px;margin:32px 32px 32px 260px;min-height:calc(100dvh - 64px);padding:48px 56px;background:var(--card);border-radius:29px}header{margin-bottom:36px;padding-bottom:28px;border-bottom:1px solid var(--line)}.eyebrow,.section-label{color:#8b98a6;font-size:11px;font-weight:650;letter-spacing:.16em}.eyebrow{margin-bottom:14px}h1{font-size:52px;line-height:1.15;letter-spacing:-.055em;margin:0 0 16px;font-weight:750}h1 span{color:#a3b1bd}.intro{margin:0;color:#657585;font-size:16px}.intro mark{background:rgba(163,224,99,.65);padding:2px 4px;border-radius:4px;color:var(--text)}h2{font-size:20px;line-height:1.45;letter-spacing:-.035em;margin:0 0 16px}p{overflow-wrap:anywhere}.card{background:#fff;border:1px solid rgba(223,228,233,.65);border-radius:22px;padding:26px;margin:18px 0;box-shadow:0 3px 12px rgba(181,188,203,.05)}.actions{display:grid;grid-template-columns:1fr 1fr;gap:14px}.action{display:block;width:100%;min-height:56px;padding:16px 22px;border:1px solid transparent;border-radius:999px;background:var(--text);color:#fff;font-size:14px;font-weight:650;line-height:1.5;text-align:center;text-decoration:none;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease,background .15s ease}.action.secondary{background:#fff;color:var(--text);border-color:var(--line);box-shadow:var(--shadow)}.action:disabled{opacity:.5;cursor:default}.action:hover:not(:disabled){transform:translateY(-2px)}.action:active:not(:disabled){transform:translateY(0)}button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--blue);outline-offset:4px}.sub{display:block;font-size:11px;font-weight:400;margin-top:5px;opacity:.75}.status{min-height:1.7em;margin:24px 0 0;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}.status:before{content:"";width:6px;height:6px;border-radius:999px;background:currentColor;flex:none}.status.ok{color:var(--success)}.status.error{color:var(--error)}.preview{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted);font-size:13px;margin:12px 0 0}.row{display:flex;align-items:center;justify-content:space-between;gap:12px}.row h2{margin-bottom:16px}.badge{background:rgba(163,224,99,.4);color:#355f2c;border-radius:999px;font-size:11px;padding:3px 12px;font-weight:650}.clip{white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto;margin:0;padding:22px;background:#f5f6f8;border:1px dashed #d8dfe6;border-radius:16px;font-size:15px;min-height:100px}.muted{color:var(--muted)}.switch{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:40px;cursor:pointer;font-size:14px;font-weight:600}.switch input{appearance:none;width:42px;height:25px;background:#dce1e7;border-radius:999px;position:relative;flex:none;cursor:pointer;transition:background .15s}.switch input:before{content:"";position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #1c2b3a22;transition:transform .15s}.switch input:checked{background:var(--text)}.switch input:checked:before{transform:translateX(17px)}textarea{display:block;width:100%;min-height:120px;resize:vertical;border:1px solid var(--line);border-radius:16px;padding:16px;background:#f5f6f8;color:var(--text)}.help{font-size:12px;line-height:1.85;color:var(--muted);margin:8px 0 16px}.errorbox{border:1px solid #ebcbd1;background:#fff5f6;border-radius:16px;padding:16px;color:var(--error);font-size:13px;margin-bottom:18px}.setup-input{display:block;width:100%;min-height:50px;margin:8px 0 16px;padding:12px 18px;border:1px solid var(--line);border-radius:999px;background:#f5f6f8;color:var(--text);font-size:13px}.setup-button{min-height:50px}.setup-feedback{min-height:1.5em;margin:12px 0 0;color:var(--error);font-size:13px}label[for]{font-size:13px}#setupQr{padding:12px;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);margin:24px auto!important}#clipboardPanel,#connectionPanel{max-width:768px;margin:auto}.tabs{display:flex;gap:8px;margin-bottom:24px}.tabs button{flex:1;min-width:0;min-height:46px;padding:10px 16px;border:0;border-radius:999px;background:transparent;color:#657585;font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s,transform .15s}.tabs button:hover:not(:disabled){background:#f2f3f5}.tabs button[aria-pressed="true"]{background:#fff;color:var(--text);box-shadow:var(--shadow)}.tabs button:disabled{opacity:.45;cursor:default}#connectionPanel>.tabs{padding:5px;background:#e9ecf0;border-radius:999px;gap:4px}.primary-nav{position:fixed;left:24px;top:136px;width:212px;flex-direction:column;gap:10px}.primary-nav button{flex:none;text-align:left;padding:15px 20px}.primary-nav button[aria-pressed="true"]:after{content:"\2192";float:right;color:#8b98a6}.brand{position:fixed;top:54px;left:32px;display:flex;align-items:center;gap:10px;font-size:19px;font-weight:750;letter-spacing:-.04em}.brand svg{width:34px;height:28px}.sidebar-note{position:fixed;bottom:40px;left:38px;color:#8b98a6;font-size:10px;letter-spacing:.12em;line-height:2}.sidebar-note strong{display:block;color:#657585;font-size:11px;font-weight:500;letter-spacing:.04em}.action-icon{display:inline-block;width:19px;height:19px;vertical-align:-4px;margin-right:7px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}.section-label{display:block;margin-bottom:8px}.app-footer{margin:28px 0 0;padding-top:20px;border-top:1px solid var(--line);color:#8b98a6;font-size:10px;letter-spacing:.12em;text-align:right}[hidden]{display:none!important}
-    @media(min-width:1392px){main{margin-left:calc(260px + (100vw - 1392px)/2)}}
-    @media(max-width:1023px){.brand{position:absolute;top:22px;left:24px;font-size:18px}.sidebar-note{display:none}main{margin:76px 20px 20px;padding:32px;min-height:calc(100dvh - 96px)}.primary-nav{position:static;width:auto;flex-direction:row;margin:0 0 28px;padding:4px;background:#e9ecf0;border-radius:999px}.primary-nav button{flex:1;text-align:center;padding:12px}.primary-nav button[aria-pressed="true"]:after{display:none}h1{font-size:42px}header{margin-bottom:24px}}
-    @media(max-width:540px){main{margin:72px 10px 12px;padding:26px 18px;border-radius:29px}.brand{left:25px;top:21px}header{padding-bottom:22px;margin-bottom:22px}.eyebrow{font-size:10px;margin-bottom:12px}h1{font-size:32px;margin-bottom:12px}.intro{font-size:13px}h2{font-size:18px}.card{padding:20px 17px;border-radius:20px;margin:16px 0}.actions{grid-template-columns:1fr;gap:12px}.actions .action{padding:17px 20px;font-size:15px}.sub{font-size:12px}.tabs button{font-size:12px;padding:10px 8px}.primary-nav{margin-bottom:24px}.clip{padding:16px;font-size:14px}.help{font-size:12px}#setupQr{width:240px;max-width:100%}.app-footer{font-size:9px}}
-    @media(prefers-reduced-motion:reduce){*,*:before{transition:none!important;animation:none!important}}
-    .connection-summary{max-width:768px;margin:0 auto 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;background:#fff;border-radius:18px;border:1px solid var(--line)}.connection-summary .status{margin:0;font-weight:600}.connection-summary small{display:block;color:var(--muted);font-size:11px;overflow-wrap:anywhere}.text-button{border:0;border-radius:999px;background:var(--soft);color:var(--text);padding:10px 16px;white-space:nowrap;cursor:pointer;font-size:12px}.steps{list-style:none;padding:0;display:flex;gap:8px;margin:0 0 18px;counter-reset:step}.steps li{flex:1;border-radius:999px;background:#eceef1;padding:8px 10px;font-size:11px;text-align:center;color:#657585}.steps li[aria-current="step"]{background:rgba(163,224,99,.45);color:var(--text);font-weight:650}.steps li.done{background:#e9f4ec;color:var(--success)}.notice{padding:14px 16px;background:#f5f6f8;border-radius:16px;font-size:13px}.link-row{display:flex;gap:8px;flex-wrap:wrap}.link-row a{display:inline-block;padding:10px 16px;background:#fff;border:1px solid var(--line);border-radius:999px;color:var(--text);font-size:12px;text-decoration:none}.check-list{padding-left:20px;color:var(--muted);font-size:13px}.check-list li{margin:8px 0}.small-status{font-size:13px;min-height:1.7em;color:var(--muted)}.small-status.ok{color:var(--success)}.small-status.error{color:var(--error)}details>summary{cursor:pointer;font-size:14px;font-weight:600;min-height:32px}#lastTransfer{margin-top:14px;color:#657585;font-size:12px}#troubleCard{max-width:768px;margin:0 auto 20px}.connection-summary strong{font-weight:650}#testText{border-radius:16px}
-    .prep-item{padding:16px 0;border-top:1px solid var(--line)}.prep-check{display:flex;gap:12px;align-items:flex-start;font-size:14px;font-weight:600;cursor:pointer}.prep-check input{width:21px;height:21px;flex:none;margin:2px 0 0;accent-color:var(--text)}.prep-content{padding-left:33px}.prep-item.is-done .prep-check span{color:var(--muted);text-decoration:line-through}.prep-item.is-done .prep-content{display:none}.prep-progress{font-size:12px;color:var(--muted);margin:8px 0 14px}#toggleCompletedPrep{margin-bottom:12px}
-  </style>
 </head>
-<body>
-<div class="brand" aria-label="ClipBridge"><svg viewBox="0 0 40 30" fill="none" aria-hidden="true"><circle cx="14" cy="15" r="10" stroke="#1c2b3a" stroke-width="3.5"/><circle cx="26" cy="15" r="10" stroke="#007be5" stroke-width="3.5"/></svg>ClipBridge</div>
-<div class="sidebar-note" aria-hidden="true">A LITTLE LESS FRICTION<strong>iPhone ↔ Windows</strong></div>
-<main>
-  <header><div class="eyebrow">YOUR EVERYDAY CLIPBOARD</div><h1>Clip<span>Bridge</span></h1><p class="intro">テキストを、<mark>手元のiPhoneとPCで受け渡し。</mark></p></header>
-  <nav class="tabs primary-nav" aria-label="画面切り替え">
-    <button id="clipboardTab" type="button" aria-pressed="true" aria-controls="clipboardPanel">クリップボード</button>
-    <button id="connectionTab" type="button" aria-pressed="false" aria-controls="connectionPanel">接続管理</button>
-  </nav>
-  <div class="connection-summary" aria-label="接続状態">
-    <div><p id="connectionState" class="status" role="status" aria-live="polite">接続を確認中…</p><small id="connectionTarget">接続先を確認しています</small></div>
-    <button id="openConnection" class="text-button" type="button">接続を確認</button>
-  </div>
-  <section id="troubleCard" class="card" hidden>
-    <h2 id="troubleTitle">接続を確認してください</h2>
-    <p id="troubleDetail" class="help"></p>
-    <ol class="check-list"><li>PCを起動し、ClipBridgeを開きます。</li><li>PCとiPhoneのTailscaleを接続し、同じアカウントのネットワークを選びます。</li><li>PCでHTTPSの公開設定を済ませ、正しいセットアップURLから開きます。</li></ol>
-    <div class="link-row"><a href="https://apps.apple.com/jp/app/tailscale/id1470499037" target="_blank" rel="noopener noreferrer">iPhoneにTailscaleを入れる</a><a href="https://tailscale.com/download/windows" target="_blank" rel="noopener noreferrer">PCにTailscaleを入れる</a></div>
-    <button id="retryConnection" class="action secondary setup-button" style="margin-top:16px" type="button">もう一度接続を確認</button>
-  </section>
-  <div id="authError" class="errorbox" role="alert" hidden>接続用の情報がありません。セットアップURLからもう一度開くか、接続管理で貼り付けて設定してください。</div>
-  <div id="connectionPanel" aria-label="接続管理" hidden>
-  <nav class="tabs" aria-label="接続設定の切り替え">
-    <button id="phoneSetupTab" type="button" aria-pressed="true" aria-controls="phoneSetupPanel">iPhoneを接続する</button>
-    <button id="shortcutSetupTab" type="button" aria-pressed="false" aria-controls="shortcutSetupPanel">ショートカット</button>
-  </nav>
-  <div id="shortcutSetupPanel" hidden>
-  <section id="shortcutSetup" class="card" hidden>
-    <span class="section-label">SHORTCUT SETUP</span><h2>コントロールセンターからPCへ送る</h2>
-    <p class="help">このiPhoneに公開版ショートカットを追加し、下の接続情報を設定してください。追加画面での確認とコントロールセンターへの登録はiPhoneで操作します。</p>
-    <a class="action setup-button" style="display:block;text-decoration:none" href="https://www.icloud.com/shortcuts/3aad5d2cccb2482dbd1a52da7d3deac8" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">① ショートカットを追加</a>
-    <p class="help" style="margin-top:12px">追加後、ショートカットの「…」を開き、「URL」に送信先を、「URLの内容を取得」のヘッダ「X-Token」に接続トークンを貼り付けます。</p>
-    <label for="shortcutApiUrl">送信先URL</label>
-    <input id="shortcutApiUrl" class="setup-input" readonly autocomplete="off" spellcheck="false">
-    <button id="copyShortcutApi" class="action secondary setup-button" type="button">② 送信先URLをコピー</button>
-    <label for="shortcutToken" style="display:block;margin-top:12px">接続トークン（X-Token）</label>
-    <input id="shortcutToken" class="setup-input" type="password" readonly autocomplete="off" spellcheck="false">
-    <button id="copyShortcutToken" class="action secondary setup-button" type="button">③ 接続トークンをコピー</button>
-    <p id="shortcutFeedback" class="help" role="status" aria-live="polite"></p>
-    <p class="help">④ コントロールセンターを長押し →「コントロールを追加」→「ショートカット」→「選択」で「CopyBridge-公開用」を指定します。</p>
-    <button id="finishSetup" class="action setup-button" type="button">クリップボードへ進む</button>
-  </section>
-  </div>
-  <div id="phoneSetupPanel">
-  <section id="phoneSetup" class="card" hidden>
-    <span class="section-label">CONNECT YOUR IPHONE</span><h2>iPhoneを接続する</h2>
-    <p class="help">iPhoneのTailscaleを接続して、カメラでこのQRコードを読み取り、Safariで開いてください。</p>
-    <img id="setupQr" alt="iPhone接続用QRコード" width="280" height="280" style="display:block;max-width:100%;height:auto;background:white;margin:12px auto">
-    <label for="phoneSetupUrl">認証情報付きセットアップURL</label>
-    <input id="phoneSetupUrl" class="setup-input" readonly autocomplete="off" spellcheck="false">
-    <button id="copySetupUrl" class="action setup-button" type="button">セットアップURLをコピー</button>
-    <p id="phoneSetupStatus" class="help" role="status"></p>
-    <p class="help">ホーム画面版で接続情報を求められたら、SafariでこのURLをコピーし、ホーム画面版の入力欄へ貼り付けてください。このURLは認証情報を含むため、他人へ共有しないでください。</p>
-  </section>
-  <section id="tailscaleGuide" class="card">
-    <span class="section-label">BEFORE YOU START</span><h2>TailscaleでPCとiPhoneをつなぐ</h2>
-    <p class="help">ClipBridgeには、PCとiPhoneの両方にTailscaleが必要です。離れた場所でも2台をつなぐためのアプリです。</p>
-    <p id="prepProgress" class="prep-progress" role="status" aria-live="polite"></p>
-    <button id="toggleCompletedPrep" class="text-button" type="button" aria-expanded="false" aria-controls="prepChecklist" hidden>完了した項目を表示</button>
-    <div id="prepChecklist">
-      <div class="prep-item" data-prep-step="iphone-install">
-        <label class="prep-check"><input type="checkbox" data-prep-check="iphone-install"><span>iPhoneにTailscaleをインストールした</span></label>
-        <div class="prep-content"><p class="help">まだ入れていない場合は、App Storeからインストールしてください。</p><div class="link-row"><a href="https://apps.apple.com/jp/app/tailscale/id1470499037" target="_blank" rel="noopener noreferrer">iPhone用 · App Store</a></div></div>
-      </div>
-      <div class="prep-item" data-prep-step="pc-install">
-        <label class="prep-check"><input type="checkbox" data-prep-check="pc-install"><span>PCにTailscaleをインストールした</span></label>
-        <div class="prep-content"><p class="help">PCにもTailscaleが必要です。Windows用をインストールしてください。</p><div class="link-row"><a href="https://tailscale.com/download/windows" target="_blank" rel="noopener noreferrer">Windows用をダウンロード</a></div></div>
-      </div>
-      <div class="prep-item" data-prep-step="vpn-connected">
-        <label class="prep-check"><input type="checkbox" data-prep-check="vpn-connected"><span>同じアカウントでログインし、両方を接続した</span></label>
-        <div class="prep-content"><p class="help">PCとiPhoneで同じアカウントのネットワークを選び、接続をオンにします。iPhoneでVPN構成の追加を求められたら許可してください。</p></div>
-      </div>
-      <div class="prep-item" data-prep-step="https-configured">
-        <label class="prep-check"><input type="checkbox" data-prep-check="https-configured"><span>PCの公開設定を済ませた</span></label>
-        <div class="prep-content"><p class="help">PCのClipBridgeアプリで「Tailscale」→「HTTPS・DNSの設定を開く」を確認し、「HTTPS公開設定を実行 / 修復」を押します。Windowsの管理者確認が出たら許可してください。「接続テスト」で状態を確認できます。</p></div>
-      </div>
+<body class="app">
+  <header class="topbar">
+    <div class="brand"><img src="/icon-180.png" alt="" width="30" height="30"><span>ClipBridge</span></div>
+    <div id="conn" class="pill" aria-live="polite">確認中…</div>
+    <button id="pcSwitch" class="pill switcher" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="pcMenu" hidden>
+      <span id="pcSwitchName">—</span><span class="chev" aria-hidden="true">▾</span>
+    </button>
+    <div id="pcMenu" class="menu" hidden>
+      <div class="menu-head"><span>接続先の PC</span><span id="pcMenuStatus" class="meta"></span></div>
+      <ul id="pcList" class="pc-list" role="menu"></ul>
+      <button id="addPcBtn" class="btn block" type="button">＋ PC を追加</button>
     </div>
-    <p id="pcDiagnosis" class="small-status" role="status">PCの状態は「接続テスト」で確認できます。</p>
-  </section>
-  <section id="setupCard" class="card" hidden>
-    <h2>ホーム画面版の接続設定</h2>
-    <p class="help">ホーム画面のアプリは Safari と保存領域が別です。最初の一度だけ、PCに表示されたセットアップURLをここへ貼り付けてください。</p>
-    <form id="setupForm">
-      <label for="setupInput">セットアップURL またはトークン</label>
-      <input id="setupInput" class="setup-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required>
-      <button id="setupButton" class="action setup-button" type="submit">接続する</button>
-    </form>
-    <p id="setupFeedback" class="setup-feedback" role="alert" aria-live="polite"></p>
-  </section>
-  <section id="onboardingCard" class="card">
-    <span class="section-label">QUICK START</span><h2 id="onboardingTitle">はじめての接続</h2>
-    <ol class="steps" aria-label="セットアップの進み具合"><li id="stepConnect" aria-current="step">1 接続する</li><li id="stepTest">2 テスト送信</li><li id="stepDone">3 完了</li></ol>
-    <p id="onboardingHelp" class="help">Tailscaleを準備し、PCに表示されたQRコードからiPhoneで開いてください。</p>
-    <button id="testConnection" class="action secondary setup-button" type="button">接続テスト</button>
-    <p id="testConnectionResult" class="small-status" role="status" aria-live="polite"></p>
-    <label for="testText">テストでPCへ送る文字</label><input id="testText" class="setup-input" value="ClipBridge 接続テスト" autocomplete="off">
-    <p class="help">「テスト送信」を押すと、PCの現在のコピー内容がこの文字に置き換わります。</p>
-    <button id="testSend" class="action setup-button" type="button">テスト送信して確認</button>
-    <p id="testSendResult" class="small-status" role="status" aria-live="polite"></p>
-    <button id="completeOnboarding" class="action secondary setup-button" type="button" disabled>設定を完了して使い始める</button>
-  </section>
-  </div>
-  </div>
-  <div id="clipboardPanel" aria-label="クリップボード">
-  <section id="firstUseCard" class="card" hidden><span class="section-label">WELCOME</span><h2>まずは接続を確かめましょう</h2><p class="help">接続する → テスト送信する → 完了。初回の案内に沿って、PCへ文字が届くことを確認できます。</p><button id="startOnboarding" class="action secondary setup-button" type="button">3ステップの接続案内を開く</button><button id="dismissOnboarding" class="text-button" style="margin-top:16px" type="button">次回から表示しない</button><p class="help">案内はいつでも「接続管理」から確認できます。</p></section>
-  <section class="card" aria-label="クリップボード操作">
-    <span class="section-label">SEND &amp; RECEIVE</span>
-    <div class="actions">
-      <button id="send" class="action" type="button"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg>PCへ送る<span class="sub">iPhoneでコピーした文字をPCへ</span></button>
-      <button id="take" class="action secondary" type="button"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v13m-5-5 5 5 5-5M4 15v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg>iPhoneへ取る<span class="sub">PCでコピーした文字をiPhoneへ</span></button>
-    </div>
-    <p id="status" class="status" role="status" aria-live="polite">準備中…</p>
-    <p id="sendPreview" class="preview" hidden></p>
-    <p id="lastTransfer" role="status" aria-live="polite" hidden></p>
-  </section>
-  <section id="pasteFallback" class="card" hidden><h2>手動で貼り付け</h2><p class="help">iPhoneのクリップボードを直接読めませんでした。ここを長押しして貼り付けると、自動でPCへ送ります。</p><label for="manualPaste">送るテキスト</label><textarea id="manualPaste" autocomplete="off"></textarea></section>
-  <section id="copyFallback" class="card" hidden><h2>手動でコピー</h2><p class="help">自動コピーできませんでした。下の文字を長押しでコピーしてください。</p><label for="manualCopy">PCから取得したテキスト</label><textarea id="manualCopy" readonly></textarea></section>
-  <section class="card" aria-label="PCの現在のクリップボード"><div class="row"><h2>PCの現在のクリップボード</h2><span id="newBadge" class="badge" hidden>新着</span></div><p id="currentClip" class="clip muted">読み込み中…</p></section>
-  <section id="autoSendCard" class="card"><label class="switch" for="autoSend"><span>開いたとき自動で送る</span><input id="autoSend" type="checkbox"></label><p class="help">画面を開いたとき、この端末のコピー内容をPCへ送ります。iOSではペーストの許可が必要です。</p></section>
-  </div>
-<footer class="app-footer">CLIPBRIDGE · IPHONE ↔ WINDOWS</footer>
-</main>
-<script>
-(() => {
-  'use strict';
-  const $ = id => document.getElementById(id);
-  window.addEventListener('hashchange', () => {
-    const incomingToken = new URLSearchParams(location.hash.slice(1)).get('t');
-    if (incomingToken) location.reload();
-  });
-  const setupRequested = new URLSearchParams(location.search).get('setup') === '1';
-  const tokenFromUrl = new URLSearchParams(location.hash.slice(1)).get('t');
-  if (tokenFromUrl) {
-    localStorage.setItem('clipbridge-token', tokenFromUrl);
-    history.replaceState(null, '', location.pathname + location.search);
-  }
-  let token = localStorage.getItem('clipbridge-token');
-  const authError = $('authError');
-  const setupCard = $('setupCard');
-  const status = $('status');
-  const send = $('send');
-  const take = $('take');
-  const autoSend = $('autoSend');
-  const isPhone = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const deviceName = isPhone ? (/Android/i.test(navigator.userAgent) ? 'このスマートフォン' : 'このiPhone') : 'この端末';
-  const isHost = ['127.0.0.1', 'localhost'].includes(location.hostname);
-  const onboardingKey = 'clipbridge-onboarding-v1';
-  const welcomeDismissedKey = 'clipbridge-welcome-dismissed-v1';
-  const prepKey = 'clipbridge-preparation-v1';
-  let prepState = {};
-  try { prepState = JSON.parse(localStorage.getItem(prepKey)) || {}; } catch {}
-  let showCompletedPrep = false;
-  const prepChecks = [...document.querySelectorAll('[data-prep-check]')];
-  function renderPreparation() {
-    let count = 0;
-    prepChecks.forEach(input => {
-      const done = prepState[input.dataset.prepCheck] === true;
-      input.checked = done;
-      const item = input.closest('[data-prep-step]');
-      item.hidden = done && !showCompletedPrep;
-      item.classList.toggle('is-done', done);
-      if (done) count++;
-    });
-    $('prepProgress').textContent = count === prepChecks.length ? '準備のチェックはすべて完了しました。項目はあとから見直せます。' : `${count} / ${prepChecks.length} 完了 · チェックした項目は非表示になります。`;
-    $('toggleCompletedPrep').hidden = count === 0;
-    $('toggleCompletedPrep').textContent = showCompletedPrep ? '完了した項目を隠す' : `完了した項目を表示（${count}件）`;
-    $('toggleCompletedPrep').setAttribute('aria-expanded', String(showCompletedPrep));
-  }
-  prepChecks.forEach(input => input.addEventListener('change', () => {
-    prepState[input.dataset.prepCheck] = input.checked;
-    localStorage.setItem(prepKey, JSON.stringify(prepState));
-    renderPreparation();
-    if (input.closest('[data-prep-step]').hidden) {
-      const next = prepChecks.find(check => !check.closest('[data-prep-step]').hidden);
-      (next || $('toggleCompletedPrep')).focus();
-    }
-  }));
-  $('toggleCompletedPrep').addEventListener('click', () => {showCompletedPrep = !showCompletedPrep; renderPreparation();});
-  renderPreparation();
-  let pcName = location.hostname.endsWith('.ts.net') ? location.hostname.split('.')[0] : 'PC';
-  let testPassed = false;
-  let diagnosticsPending = false;
-  let connected = false;
-  if (!isPhone) {
-    send.childNodes[1].textContent = 'iPhoneへ共有する';
-    send.lastChild.textContent = 'PCでコピーした文字を、iPhone側で取得できます';
-    take.childNodes[1].textContent = 'PCの内容をコピー';
-    take.lastChild.textContent = '表示されているPCの文字を、この端末でコピー';
-    $('autoSendCard').hidden = isHost;
-  }
-  $('pasteFallback').querySelector('.help').textContent = 'コピー内容を直接読めませんでした。下の欄に貼り付けるとPCへ送ります。';
-  let pollTimer = null;
-  let lastHash = null;
-  let hasPolled = false;
-  let polling = false;
-  let manualTimer = null;
+  </header>
 
-  function message(text, kind = '') { status.textContent = text; status.className = 'status ' + kind; }
-  function setConnection(ok) {
-    connected = ok;
-    $('connectionState').textContent = ok ? '接続中：' + pcName : 'PCに接続できません';
-    $('connectionState').className = 'status ' + (ok ? 'ok' : 'error');
-    $('connectionTarget').textContent = '接続先：' + pcName + (isHost ? '（このPC）' : '');
-  }
-  function trouble(title, detail) {
-    $('troubleTitle').textContent = title;
-    $('troubleDetail').textContent = detail;
-    $('troubleCard').hidden = false;
-  }
-  function networkFailure() {
-    setConnection(false);
-    trouble('PCに接続できません', navigator.onLine === false ? 'この端末がオフラインです。Wi-Fiまたはモバイル通信を確認してください。' : '通信が届いていません。PCの電源・ClipBridgeの起動・両方のTailscale接続を順に確認してください。原因をこの画面だけで特定することはできません。');
-  }
-  function transferResult(text) {
-    const time = new Date().toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-    $('lastTransfer').textContent = text + ' · ' + time;
-    $('lastTransfer').hidden = false;
-    message(text, 'ok');
-  }
-  function updateSteps(stage) {
-    ['stepConnect', 'stepTest', 'stepDone'].forEach((id, i) => {
-      $(id).className = i < stage ? 'done' : '';
-      if (i === stage) $(id).setAttribute('aria-current', 'step');
-      else $(id).removeAttribute('aria-current');
-    });
-    $('testSend').disabled = !token;
-  }
-  async function diagnose() {
-    if (diagnosticsPending || !token) return false;
-    diagnosticsPending = true;
-    $('testConnection').disabled = true;
-    $('retryConnection').disabled = true;
-    $('testConnectionResult').textContent = 'PCとTailscaleの状態を確認中…';
-    try {
-      const data = await api('/api/connection');
-      pcName = data.pc_name || pcName;
-      setConnection(true);
-      let detail;
-      if (data.tailscale === 'missing') detail = 'PCにTailscaleが見つかりません。Windows用をインストールし、ログインしてください。';
-      else if (data.tailscale === 'disconnected') detail = 'PCのTailscaleが未接続です。Tailscaleを開いてログインし、接続をオンにしてください。';
-      else if (data.tailscale === 'unknown') detail = 'ClipBridgeには接続できていますが、PCのTailscaleの状態を取得できません。PCでTailscaleを確認してください。';
-      else if (!data.dns_name) detail = 'PCの接続用アドレスが見つかりません。TailscaleのMagicDNS設定を確認してください。';
-      else if (data.https_ready === false) detail = 'PCのHTTPS公開設定が未完了です。PCのClipBridgeアプリで「HTTPS公開設定を実行 / 修復」を押してください。';
-      else if (data.https_ready === null) detail = 'PCのTailscaleは接続中です。HTTPS公開設定は確認できませんでした。iPhoneでQRコードから開けるか確認してください。';
-      else detail = isHost ? 'このPCのTailscaleとHTTPS公開設定は準備できています。iPhone側の接続はQRコードから開いて確認します。' : 'PCへの接続を確認できました。PCのTailscaleとHTTPS公開設定も準備できています。';
-      const ready = data.tailscale === 'connected' && !!data.dns_name && data.https_ready === true;
-      $('pcDiagnosis').textContent = detail;
-      $('pcDiagnosis').className = 'small-status ' + (ready ? 'ok' : 'error');
-      $('testConnectionResult').textContent = detail;
-      $('testConnectionResult').className = 'small-status ' + (ready ? 'ok' : 'error');
-      if (!ready) trouble('PCの接続準備を確認してください', detail);
-      else $('troubleCard').hidden = true;
-      updateSteps(testPassed ? 2 : 1);
-      $('onboardingHelp').textContent = 'PCに接続できました。次はテスト送信で文字が届くことを確認します。';
-      return true;
-    } catch (error) {
-      $('testConnectionResult').textContent = error.message;
-      $('testConnectionResult').className = 'small-status error';
-      return false;
-    } finally {
-      diagnosticsPending = false;
-      $('testConnection').disabled = false;
-      $('retryConnection').disabled = false;
-    }
-  }
-  $('openConnection').addEventListener('click', () => {switchPanel(true); switchSetup(false); diagnose();});
-  $('retryConnection').addEventListener('click', () => {if (token) diagnose(); else authFailure();});
-  $('testConnection').addEventListener('click', () => {if (token) diagnose(); else authFailure();});
-  $('startOnboarding').addEventListener('click', () => {switchPanel(true); switchSetup(false); diagnose();});
-  $('dismissOnboarding').addEventListener('click', () => {
-    localStorage.setItem(welcomeDismissedKey, 'true');
-    $('firstUseCard').hidden = true;
-    send.focus();
-  });
-  $('testText').addEventListener('input', () => {testPassed = false; $('completeOnboarding').disabled = true; updateSteps(connected ? 1 : 0);});
-  $('testSend').addEventListener('click', async () => {
-    const value = $('testText').value;
-    if (!value.trim()) { $('testSendResult').textContent = 'テスト用の文字を入力してください。'; return; }
-    $('testSend').disabled = true;
-    testPassed = false;
-    $('completeOnboarding').disabled = true;
-    try {
-      await api('/api/clip', {method:'POST', headers:{'Content-Type':'text/plain; charset=utf-8'}, body:value});
-      const readBack = await api('/api/clip');
-      if (readBack.text !== value) throw new Error('送信後にPCのコピー内容が変わりました。ほかのコピー操作を止めて、もう一度お試しください。');
-      testPassed = true;
-      $('completeOnboarding').disabled = false;
-      $('testSendResult').textContent = 'PCへの送信と読み戻しに成功しました。設定を完了できます。';
-      $('testSendResult').className = 'small-status ok';
-      updateSteps(2);
-      transferResult('テストの文字をPCへ送りました');
-    } catch (error) { $('testSendResult').textContent = error.message; $('testSendResult').className = 'small-status error'; }
-    finally { $('testSend').disabled = !token; }
-  });
-  $('completeOnboarding').addEventListener('click', () => {
-    if (!testPassed) return;
-    localStorage.setItem(onboardingKey, 'done');
-    $('firstUseCard').hidden = true;
-    $('onboardingTitle').textContent = '接続の設定が完了しました';
-    history.replaceState(null, '', location.pathname);
-    switchPanel(false);
-    transferResult('セットアップが完了しました');
-  });
-  $('firstUseCard').hidden = localStorage.getItem(onboardingKey) === 'done' || localStorage.getItem(welcomeDismissedKey) === 'true';
-  updateSteps(token ? 1 : 0);
-  function switchSetup(shortcut) {
-    $('phoneSetupPanel').hidden = shortcut;
-    $('shortcutSetupPanel').hidden = !shortcut;
-    $('phoneSetupTab').setAttribute('aria-pressed', String(!shortcut));
-    $('shortcutSetupTab').setAttribute('aria-pressed', String(shortcut));
-  }
-  $('phoneSetupTab').addEventListener('click', () => switchSetup(false));
-  $('shortcutSetupTab').addEventListener('click', () => switchSetup(true));
-  function switchPanel(connection) {
-    $('connectionPanel').hidden = !connection;
-    $('clipboardPanel').hidden = connection;
-    $('connectionTab').setAttribute('aria-pressed', String(connection));
-    $('clipboardTab').setAttribute('aria-pressed', String(!connection));
-    if (connection && token) showPhoneSetup();
-  }
-  $('clipboardTab').addEventListener('click', () => switchPanel(false));
-  $('connectionTab').addEventListener('click', () => switchPanel(true));
-  $('finishSetup').addEventListener('click', () => {
-    history.replaceState(null, '', location.pathname);
-    switchPanel(false);
-  });
-  async function copyShortcutValue(id) {
-    const input = $(id);
-    if (!token || !input.value) return;
-    try {
-      await navigator.clipboard.writeText(input.value);
-      $('shortcutFeedback').textContent = 'コピーしました。ショートカットの該当欄へ貼り付けてください。';
-    } catch {
-      input.type = 'text'; input.focus(); input.select(); input.setSelectionRange(0, input.value.length);
-      $('shortcutFeedback').textContent = '選択した文字列をコピーしてください。';
-    }
-  }
-  $('copyShortcutApi').addEventListener('click', () => copyShortcutValue('shortcutApiUrl'));
-  $('copyShortcutToken').addEventListener('click', () => copyShortcutValue('shortcutToken'));
-  async function showPhoneSetup() {
-    if (!token) return;
-    try {
-      const data = await api('/api/setup');
-      if (!token) return;
-      $('phoneSetupUrl').value = data.url;
-      $('shortcutApiUrl').value = new URL('/api/clip', data.url).href;
-      $('shortcutToken').value = token;
-      $('shortcutSetupTab').disabled = false;
-      $('shortcutSetup').hidden = false;
-      $('setupQr').src = data.qr;
-      $('phoneSetup').hidden = false;
-    } catch (error) {
-      if (location.hostname === '127.0.0.1' && token) {
-        $('phoneSetup').hidden = false;
-        $('phoneSetupStatus').textContent = error.message;
-      }
-    }
-  }
-  $('phoneSetupUrl').addEventListener('click', event => event.target.select());
-  $('copySetupUrl').addEventListener('click', async () => {
-    const input = $('phoneSetupUrl');
-    if (!input.value) return;
-    try {
-      await navigator.clipboard.writeText(input.value);
-      $('phoneSetupStatus').textContent = 'コピーしました。iPhoneでもこのURLからセットアップできます。';
-    } catch {
-      input.focus(); input.select(); input.setSelectionRange(0, input.value.length);
-      $('phoneSetupStatus').textContent = 'URLを選択しました。コピーしてください。';
-    }
-  });
-  function authFailure() {
-    token = null;
-    localStorage.removeItem('clipbridge-token');
-    stopPolling();
-    send.disabled = true;
-    take.disabled = true;
-    authError.hidden = false;
-    setupCard.hidden = false;
-    $('phoneSetup').hidden = true;
-    $('phoneSetupUrl').value = '';
-    $('setupQr').removeAttribute('src');
-    $('shortcutSetup').hidden = true;
-    $('shortcutSetupTab').disabled = true;
-    switchSetup(false);
-    $('shortcutApiUrl').value = '';
-    $('shortcutToken').value = '';
-    $('connectionState').textContent = '接続設定が必要です';
-    $('connectionState').className = 'status error';
-    if (!isPhone) {
-      authError.textContent = 'このPCのブラウザに接続情報がありません。デスクトップのClipBridgeを開き、「クリップボード画面を開く」を押してください。接続情報付きで画面が開きます。';
-      setupCard.querySelector('h2').textContent = 'このPCの接続設定';
-      setupCard.querySelector('.help').textContent = 'PCとiPhoneの接続情報は別々に保存されます。PCでは「ClipBridge」から起動すると設定できます。別のブラウザを使う場合は、認証情報付きセットアップURLを下へ貼り付けてください。';
-      trouble('PCではClipBridgeから開き直してください', 'アドレスだけを直接開くと、認証情報がない場合があります。PCのClipBridgeアプリで「クリップボード画面を開く」を押してください。iPhoneの接続を設定し直す必要はありません。');
-    } else {
-      trouble('接続情報を設定してください', 'PCの「接続管理」にあるQRコードを読み取るか、認証情報付きセットアップURLを下の欄へ貼り付けてください。');
-    }
-    updateSteps(0);
-    switchPanel(true);
-    message('セットアップURLからもう一度開いてください', 'error');
-  }
-  $('setupForm').addEventListener('submit', async event => {
-    event.preventDefault();
-    const input = $('setupInput').value.trim();
-    const hash = input.includes('#') ? input.slice(input.indexOf('#') + 1) : input;
-    const candidate = new URLSearchParams(hash).get('t') || (/^[A-Za-z0-9_-]{32,}$/.test(input) ? input : '');
-    if (!candidate) { $('setupFeedback').textContent = 'トークン付きのセットアップURLを入力してください。'; return; }
-    $('setupButton').disabled = true;
-    $('setupFeedback').textContent = '';
-    try {
-      const response = await fetch('/api/health', { cache:'no-store', headers:{ 'X-Token':candidate } });
-      if (!response.ok) throw new Error(response.status === 401 ? 'トークンが一致しません。セットアップURLを確認してください。' : '接続を確認できませんでした。');
-      token = candidate;
-      localStorage.setItem('clipbridge-token', candidate);
-      $('setupInput').value = '';
-      authError.hidden = true;
-      setupCard.hidden = true;
-      send.disabled = false;
-      take.disabled = false;
-      message('接続できました', 'ok');
-      setConnection(true);
-      diagnose();
-      switchPanel(setupRequested);
-      if (document.visibilityState === 'visible') startPolling();
-    } catch (error) {
-      $('setupFeedback').textContent = error instanceof TypeError ? 'PCに接続できません。Tailscaleとサーバーを確認してください。' : error.message;
-    } finally { $('setupButton').disabled = false; }
-  });
-  async function api(path, options = {}) {
-    if (!token) { authFailure(); throw new Error('認証情報がありません'); }
-    let response;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), path === '/api/connection' ? 13000 : 8000);
-    try { response = await fetch(path, { cache:'no-store', ...options, signal:controller.signal, headers:{ 'X-Token':token, ...(options.headers || {}) } }); }
-    catch { networkFailure(); throw new Error('PCに接続できません。接続の確認手順をご覧ください。'); }
-    finally { clearTimeout(timeout); }
-    if (response.status === 401) { authFailure(); throw new Error('セットアップURLからもう一度開いてください'); }
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || '通信に失敗しました');
-    setConnection(true);
-    if ($('troubleTitle').textContent === 'PCに接続できません') $('troubleCard').hidden = true;
-    return data;
-  }
-  async function sendText(text) {
-    const data = await api('/api/clip', { method:'POST', headers:{'Content-Type':'text/plain; charset=utf-8'}, body:text });
-    transferResult(isPhone ? `PCへ送りました（${data.length}文字）` : `iPhoneで取得できるように共有しました（${data.length}文字）`);
-    $('sendPreview').textContent = text.slice(0, 50) + (text.length > 50 ? '…' : '');
-    $('sendPreview').hidden = false;
-    if (navigator.vibrate) navigator.vibrate(20);
-  }
-  async function sendFromClipboard() {
-    send.disabled = true;
-    message(deviceName + 'のコピー内容を読み取り中…');
-    try {
-      let text;
-      try {
-        if (!navigator.clipboard?.readText) throw new Error('readText unsupported');
-        text = await navigator.clipboard.readText();
-      } catch {
-        $('pasteFallback').hidden = false;
-        message('直接読めませんでした。下の欄に貼り付けてください', 'error');
-        return;
-      }
-      await sendText(text);
-      $('pasteFallback').hidden = true;
-    } catch (error) {
-      message(error.message, 'error');
-    } finally { send.disabled = !token; }
-  }
-  send.addEventListener('click', sendFromClipboard);
-  $('manualPaste').addEventListener('input', () => {
-    clearTimeout(manualTimer);
-    const text = $('manualPaste').value;
-    manualTimer = setTimeout(() => sendText(text).catch(error => message(error.message, 'error')), 350);
-  });
+  <main>
+    <!-- ペアリング画面 -->
+    <section id="pairView" class="view" hidden>
+      <div class="intro">
+        <h1>PC とつなぐ</h1>
+        <p class="lead">PC の ClipBridge 画面に表示されている<strong>6 桁のコード</strong>を入力してください。QR コードを読み取った場合は自動で接続されます。</p>
+      </div>
+      <form id="pairForm" class="card" autocomplete="off">
+        <label class="label" for="codeInput">ペアリングコード</label>
+        <input id="codeInput" class="code-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000" aria-describedby="pairMsg">
+        <button id="pairButton" class="btn primary big" type="submit">接続する</button>
+        <p id="pairMsg" class="msg" role="alert" aria-live="polite"></p>
+      </form>
+      <details class="card help">
+        <summary>PC 側の準備がまだの場合</summary>
+        <ol>
+          <li>PC で <code>ClipBridge.bat</code> をダブルクリックして起動する</li>
+          <li>PC と iPhone の両方で Tailscale アプリにログインして接続をオンにする</li>
+          <li>PC の画面に表示された QR コードを iPhone のカメラで読み取る</li>
+        </ol>
+      </details>
+    </section>
 
-  take.addEventListener('click', () => {
-    take.disabled = true;
-    message('PCのクリップボードを取得中…');
-    // The ClipboardItem and write() call must happen before the click handler yields.
-    const textPromise = api('/api/clip').then(data => data.text);
-    let writePromise;
-    try {
-      if (!navigator.clipboard?.write || !window.ClipboardItem) throw new Error('write unsupported');
-      writePromise = navigator.clipboard.write([new ClipboardItem({ 'text/plain': textPromise.then(text => new Blob([text], {type:'text/plain'})) })]);
-    } catch (error) { writePromise = Promise.reject(error); }
-    writePromise.then(async () => {
-      const text = await textPromise;
-      $('copyFallback').hidden = true;
-      transferResult(`${deviceName}にコピーしました（${text.length}文字）`);
-      if (navigator.vibrate) navigator.vibrate(20);
-    }).catch(async error => {
-      try {
-        const text = await textPromise;
-        $('manualCopy').value = text;
-        $('copyFallback').hidden = false;
-        $('manualCopy').focus();
-        $('manualCopy').select();
-        message('長押しでコピーしてください', 'error');
-      } catch (fetchError) { message(fetchError.message || error.message, 'error'); }
-    }).finally(() => { take.disabled = !token; });
-  });
+    <!-- メイン画面 -->
+    <section id="mainView" class="view" hidden>
+      <section class="card" aria-labelledby="pcClipTitle">
+        <div class="card-head">
+          <h2 id="pcClipTitle">PC のクリップボード <span id="newBadge" class="badge" hidden>新着</span></h2>
+          <span id="clipMeta" class="meta"></span>
+        </div>
+        <pre id="clipText" class="cliptext empty" tabindex="0">（まだ何もありません）</pre>
+        <button id="copyBtn" class="btn primary big" type="button">iPhone にコピー</button>
+        <textarea id="copyFallback" rows="3" readonly hidden aria-label="コピー用テキスト"></textarea>
+        <p id="copyHint" class="hint" hidden>自動でコピーできませんでした。上の欄を長押しして「コピー」を選んでください。</p>
+      </section>
 
-  async function poll() {
-    if (polling || document.visibilityState !== 'visible' || !token) return;
-    polling = true;
-    try {
-      const data = await api('/api/clip');
-      if (data.hash !== lastHash) {
-        $('currentClip').textContent = data.text || '（空）';
-        $('currentClip').classList.toggle('muted', !data.text);
-        $('newBadge').hidden = !hasPolled;
-        lastHash = data.hash;
-      }
-      hasPolled = true;
-    } catch (error) { message(error.message, 'error'); }
-    finally { polling = false; }
-  }
-  function startPolling() {
-    if (pollTimer) return;
-    poll();
-    pollTimer = setInterval(poll, 1500);
-  }
-  function stopPolling() { clearInterval(pollTimer); pollTimer = null; }
-  autoSend.checked = localStorage.getItem('clipbridge-auto-send') === 'true';
-  autoSend.addEventListener('change', () => localStorage.setItem('clipbridge-auto-send', String(autoSend.checked)));
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      startPolling();
-      if (autoSend.checked && token && !isHost && !setupRequested && localStorage.getItem(onboardingKey) === 'done') sendFromClipboard();
-    } else stopPolling();
-  });
-  if (token) { message('準備できました'); diagnose(); if (document.visibilityState === 'visible') startPolling(); }
-  else authFailure();
-  if (token && setupRequested) switchPanel(true);
-})();
-</script>
+      <section class="card" aria-labelledby="sendTitle">
+        <h2 id="sendTitle">iPhone から PC へ</h2>
+        <button id="sendBtn" class="btn big" type="button">iPhone のコピー内容を PC へ送る</button>
+        <p class="hint">「ペースト」の確認が出たらタップしてください（iOS の仕様です）。</p>
+        <label class="label" for="sendText">または、ここに貼り付けると自動で送ります</label>
+        <textarea id="sendText" rows="3" placeholder="長押し → ペースト"></textarea>
+        <p id="sendMsg" class="msg" aria-live="polite"></p>
+      </section>
+
+      <section id="a2hs" class="card tip" hidden>
+        <h2>ホーム画面に追加するとアプリのように使えます</h2>
+        <ol>
+          <li>Safari 下部の共有ボタン <span class="kbd">↑</span> をタップ</li>
+          <li>「ホーム画面に追加」を選ぶ</li>
+          <li>右上の「追加」をタップ</li>
+        </ol>
+        <p class="hint">追加したアプリは接続設定を引き継ぐので、コードの再入力は不要です。</p>
+      </section>
+
+      <section class="card settings-card" aria-labelledby="connTitle">
+        <div class="card-head">
+          <h2 id="connTitle">接続</h2>
+          <span id="pcName" class="meta"></span>
+        </div>
+        <button id="addFromSettingsBtn" class="btn block" type="button">別の PC を追加する</button>
+        <p class="hint">複数の PC を登録すると、画面上部の PC 名をタップして切り替えられます。</p>
+        <button id="unpairBtn" class="btn ghost danger block" type="button">この PC の接続を解除</button>
+        <p class="hint">解除すると、再接続には PC の画面に表示されているコードが必要です。</p>
+      </section>
+    </section>
+
+    <!-- PC の追加 -->
+    <section id="addView" class="view" hidden>
+      <div class="intro">
+        <h1>PC を追加</h1>
+        <p class="lead">同じ Tailscale ネットワークで ClipBridge が動いている PC を探します。追加したい PC の画面に表示されている<strong>6 桁のコード</strong>を入力してください。</p>
+      </div>
+      <section class="card" aria-labelledby="peersTitle">
+        <div class="card-head">
+          <h2 id="peersTitle">見つかった PC</h2>
+          <button id="peersRefreshBtn" class="link" type="button">再検索</button>
+        </div>
+        <ul id="peerList" class="pc-list plain"></ul>
+        <details class="help">
+          <summary>一覧に出ない PC を URL で追加</summary>
+          <label class="label" for="peerUrlInput">PC の URL（その PC のセットアップ画面「iPhone で開く URL」）</label>
+          <input id="peerUrlInput" class="text-input" type="url" inputmode="url" placeholder="https://pc-name.tailxxxx.ts.net/" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <button id="peerUrlBtn" class="btn block" type="button">この URL の PC を選ぶ</button>
+        </details>
+      </section>
+      <form id="addForm" class="card" autocomplete="off" hidden>
+        <p class="label">選んだ PC: <strong id="addTargetName"></strong></p>
+        <label class="label" for="addCodeInput">その PC の画面に表示されているペアリングコード</label>
+        <input id="addCodeInput" class="code-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000" aria-describedby="addMsg">
+        <button id="addButton" class="btn primary big" type="submit">追加して切り替える</button>
+        <p id="addMsg" class="msg" role="alert" aria-live="polite"></p>
+      </form>
+      <button id="addCancelBtn" class="btn ghost block" type="button">戻る</button>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="/app.js"></script>
 </body>
 </html>

@@ -1,0 +1,326 @@
+/* ClipBridge 共通スタイル（iPhone 画面 / PC 画面）
+   - モバイルファースト。間隔は --gap / --pad を画面幅に応じて伸縮させる
+   - 320px（iPhone SE 1st）〜デスクトップまで横スクロールなしで収まることを前提にする */
+:root {
+  color-scheme: light dark;
+  --bg: #f4f6fa;
+  --card: #ffffff;
+  --text: #15202b;
+  --muted: #5b6b7c;
+  --line: #dde3ea;
+  --accent: #2563eb;
+  --accent-text: #ffffff;
+  --accent-soft: #e8efff;
+  --ok: #15803d;
+  --ok-soft: #dcfce7;
+  --warn: #b45309;
+  --warn-soft: #fef3c7;
+  --err: #b91c1c;
+  --err-soft: #fee2e2;
+  --radius: 18px;
+  --shadow: 0 10px 30px rgba(21, 32, 43, 0.06);
+  /* 間隔: 画面幅 320px で 12px、広い画面で 20px まで */
+  --gap: clamp(12px, 3.2vw, 20px);
+  --pad: clamp(16px, 4.2vw, 22px);
+  --inner-gap: clamp(10px, 2.6vw, 14px);
+  --maxw-app: 640px;
+  --maxw-pc: 960px;
+  --topbar-bg: var(--bg);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e141b;
+    --card: #161e27;
+    --text: #eef2f6;
+    --muted: #9fb0c1;
+    --line: #2a3542;
+    --accent: #7ab8ff;
+    --accent-text: #0b1a2c;
+    --accent-soft: #1c2c44;
+    --ok: #6ee7a0;
+    --ok-soft: #10301f;
+    --warn: #fbbf24;
+    --warn-soft: #3a2a07;
+    --err: #fca5a5;
+    --err-soft: #3b1111;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  min-height: 100dvh;
+  /* 上のセーフエリアはヘッダーが受け持つ */
+  padding: 0 env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px);
+  overflow-x: hidden;
+}
+[hidden] { display: none !important; }
+h1 { font-size: clamp(1.5rem, 5.5vw, 1.9rem); line-height: 1.25; letter-spacing: -0.02em; margin: 0; }
+h2 { font-size: clamp(1rem, 3.6vw, 1.1rem); margin: 0; line-height: 1.4; }
+p { margin: 0; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.95em; overflow-wrap: anywhere; }
+a { color: var(--accent); }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; touch-action: manipulation; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ヘッダー（固定。standalone の iPhone ではステータスバーぶんを上に足す） */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) var(--pad) 10px;
+  background: var(--topbar-bg);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
+  backdrop-filter: saturate(160%) blur(12px);
+}
+.topbar > * { min-width: 0; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.1rem; letter-spacing: -0.01em; }
+.brand img { width: 30px; height: 30px; border-radius: 8px; flex: none; }
+.brand .sub { font-weight: 500; color: var(--muted); font-size: 0.9rem; }
+
+/* 本文: セクション間は --gap で統一 */
+main {
+  width: 100%;
+  max-width: var(--maxw-app);
+  margin: 0 auto;
+  padding: var(--gap) var(--pad) calc(40px + env(safe-area-inset-bottom, 0px));
+  display: grid;
+  /* minmax(0, 1fr): 長い URL やパスがあっても列が画面幅を超えないようにする */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap);
+}
+.pc main { max-width: var(--maxw-pc); }
+.view { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); min-width: 0; }
+.intro { display: grid; gap: 6px; padding: 2px 2px 0; }
+.lead { color: var(--muted); }
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--pad);
+  box-shadow: var(--shadow);
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--inner-gap);
+  min-width: 0;
+}
+.card > * { min-width: 0; overflow-wrap: anywhere; }
+.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.meta { color: var(--muted); font-size: 0.85rem; }
+.hint { color: var(--muted); font-size: 0.9rem; }
+.label { font-size: 0.9rem; font-weight: 600; color: var(--muted); }
+.msg { min-height: 1.4em; font-size: 0.95rem; font-weight: 600; overflow-wrap: anywhere; }
+.msg:empty { min-height: 0; }
+.msg.error { color: var(--err); }
+.msg.ok { color: var(--ok); }
+
+/* ピル・バッジ */
+.pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 11px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--text);
+  font-size: 0.82rem; font-weight: 700; white-space: nowrap;
+}
+.pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.pill.ok::before { background: var(--ok); }
+.pill.warn::before { background: var(--warn); }
+.pill.err::before { background: var(--err); }
+.badge {
+  display: inline-block; padding: 2px 9px; border-radius: 999px; vertical-align: middle;
+  background: var(--ok-soft); color: var(--ok); font-size: 0.75rem; font-weight: 800;
+  animation: pop 0.35s ease-out;
+}
+@keyframes pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* ボタン（タップ領域は最低 44px） */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px; padding: 10px 18px;
+  border-radius: 14px; border: 1px solid var(--line);
+  background: var(--card); color: var(--text);
+  font-weight: 700; font-size: 1rem; line-height: 1.3; text-align: center;
+  transition: transform 0.08s ease, opacity 0.15s ease, filter 0.15s ease;
+}
+.btn:active { transform: scale(0.98); }
+.btn:disabled { opacity: 0.55; cursor: default; }
+.btn.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+.btn.big { min-height: 60px; font-size: clamp(1rem, 4vw, 1.1rem); width: 100%; }
+.btn.block { width: 100%; }
+.btn.ghost { background: transparent; }
+.btn.danger { color: var(--err); border-color: color-mix(in srgb, var(--err) 45%, var(--line)); }
+.btn.danger:active { background: var(--err-soft); }
+.btn.link, .link {
+  background: none; border: 0; padding: 0; min-height: 0;
+  color: var(--accent); font-weight: 600; text-decoration: underline; text-underline-offset: 3px;
+}
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+@media (hover: hover) {
+  .btn:hover:not(:disabled) { filter: brightness(0.97); }
+  .btn.primary:hover:not(:disabled) { filter: brightness(1.07); }
+}
+
+/* 入力 */
+textarea, .text-input {
+  width: 100%; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--bg); color: var(--text); padding: 12px; resize: vertical;
+  font-size: 16px; /* iOS の自動ズームを防ぐ */
+}
+.code-input {
+  width: 100%; text-align: center; letter-spacing: 0.35em; text-indent: 0.35em;
+  font-size: clamp(1.6rem, 8vw, 2rem); font-weight: 800; font-variant-numeric: tabular-nums;
+  padding: 12px; border: 2px solid var(--line); border-radius: 14px;
+  background: var(--bg); color: var(--text);
+}
+.code-input:focus { border-color: var(--accent); outline: none; }
+
+/* iPhone 画面 */
+.cliptext {
+  margin: 0; padding: 12px; border-radius: 12px;
+  background: var(--bg); border: 1px solid var(--line);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: clamp(120px, 32vh, 320px); overflow: auto; font: inherit;
+  min-height: 3.2em;
+}
+.cliptext.empty { color: var(--muted); font-style: italic; }
+.cliptext.flash { animation: flash 0.9s ease-out; }
+@keyframes flash { from { background: var(--ok-soft); } to { background: var(--bg); } }
+.tip ol, .help ol, .steps ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
+.kbd { display: inline-block; border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; font-size: 0.9em; background: var(--bg); }
+details summary { cursor: pointer; font-weight: 700; min-height: 28px; }
+details[open] summary { margin-bottom: 8px; }
+.settings-card { gap: 10px; }
+.toast {
+  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 20;
+  background: var(--text); color: var(--bg);
+  padding: 12px 18px; border-radius: 999px; font-weight: 700; font-size: 0.95rem;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  max-width: calc(100vw - 32px); text-align: center; overflow-wrap: anywhere;
+  animation: rise 0.25s ease-out;
+}
+.toast.error { background: var(--err); color: #fff; }
+@keyframes rise { from { transform: translate(-50%, 12px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+
+/* PC 画面 */
+.step { gap: var(--inner-gap); }
+.step-head { display: flex; align-items: center; gap: 12px; }
+.step-head .num {
+  width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent); color: var(--accent-text); font-weight: 800; flex: none;
+}
+.step-head h2 { font-size: clamp(1.05rem, 3.8vw, 1.15rem); }
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.checks li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: start; min-width: 0; }
+.checks .icon { font-size: 1.1rem; line-height: 1.5; }
+.checks .detail { color: var(--muted); font-size: 0.88rem; overflow-wrap: anywhere; }
+.checks .fix { font-size: 0.88rem; color: var(--warn); overflow-wrap: anywhere; }
+.pair-grid { display: grid; grid-template-columns: minmax(180px, 260px) minmax(0, 1fr); gap: var(--gap); align-items: start; }
+.qr {
+  width: 100%; max-width: 280px;
+  background: #fff; border-radius: 16px; padding: 10px; border: 1px solid var(--line);
+  aspect-ratio: 1; display: grid; place-items: center;
+}
+.qr svg { width: 100%; height: 100%; }
+.qr .placeholder { color: #5b6b7c; font-size: 0.9rem; text-align: center; padding: 20px; }
+.pair-info { display: grid; gap: 10px; min-width: 0; }
+.url code { font-size: 1rem; }
+.code {
+  font-size: clamp(1.9rem, 7vw, 2.6rem); font-weight: 800; letter-spacing: 0.22em; text-indent: 0.22em;
+  font-variant-numeric: tabular-nums; line-height: 1.2;
+  padding: 8px 14px; border-radius: 14px; background: var(--accent-soft); display: inline-block; max-width: 100%;
+}
+.devices { display: grid; gap: 8px; }
+.device { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: var(--ok-soft); color: var(--text); }
+.device .who { font-weight: 700; }
+.device .detail { color: var(--muted); font-size: 0.88rem; overflow-wrap: anywhere; }
+.device .when { margin-left: auto; color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
+.waiting { color: var(--muted); }
+.switch { display: flex; align-items: center; gap: 12px; min-height: 44px; cursor: pointer; font-weight: 600; }
+.switch input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
+.pc-footer { color: var(--muted); font-size: 0.85rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; overflow-wrap: anywhere; }
+.pc-footer code { word-break: break-all; }
+
+/* 画面幅ごとの微調整 */
+@media (max-width: 360px) {
+  .brand { font-size: 1rem; }
+  .pill { font-size: 0.78rem; padding: 4px 9px; }
+  .btn { padding: 10px 14px; }
+}
+@media (max-width: 480px) {
+  .actions .btn { flex: 1 1 100%; }
+  .pair-grid { grid-template-columns: 1fr; }
+  .qr { justify-self: center; }
+  .device .when { margin-left: 0; flex-basis: 100%; }
+}
+@media (min-width: 481px) and (max-width: 680px) {
+  .pair-grid { grid-template-columns: 1fr; }
+  .qr { justify-self: center; }
+}
+@media (min-width: 768px) {
+  :root { --radius: 20px; }
+  .app main { padding-top: calc(var(--gap) * 1.4); }
+  .btn.big { min-height: 56px; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .cliptext { max-height: 24vh; }
+  .btn.big { min-height: 52px; }
+  main { padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+a.btn { text-decoration: none; }
+.toast.ok { background: var(--ok); color: #fff; }
+
+/* PC 切り替え（iPhone 画面の上部） */
+.switcher {
+  border: 1px solid var(--line); cursor: pointer; font: inherit; font-size: 0.85rem; font-weight: 700;
+  min-height: 36px; max-width: min(60vw, 260px);
+}
+.switcher #pcSwitchName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.switcher .chev { color: var(--muted); font-size: 0.8em; flex: none; }
+.menu {
+  position: absolute; right: var(--pad); top: calc(100% - 2px); z-index: 30;
+  width: min(calc(100vw - 2 * var(--pad)), 380px);
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+  padding: 12px; display: grid; gap: 10px;
+}
+.menu-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-weight: 700; font-size: 0.9rem; }
+.pc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.pc-item { display: flex; align-items: center; gap: 8px; border-radius: 12px; min-width: 0; }
+.pc-item.active { background: var(--accent-soft); }
+.pc-pick {
+  flex: 1 1 auto; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 10px;
+  border: 0; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; border-radius: 12px; min-width: 0;
+}
+.pc-item.active .pc-pick::after { content: "✓"; margin-left: auto; color: var(--accent); font-weight: 800; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.ok { background: var(--ok); }
+.dot.warn { background: var(--warn); }
+.dot.err { background: var(--err); }
+.pc-text { display: grid; gap: 1px; min-width: 0; }
+.pc-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-sub { color: var(--muted); font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-remove { flex: none; padding: 8px 10px; min-height: 44px; }
+.pc-list.plain .pc-item { padding: 10px 12px; background: var(--bg); gap: 12px; }
+.pc-list.plain .pc-item .pc-text { flex: 1 1 auto; }
+.pc-list.plain .pc-item .btn { flex: none; min-height: 40px; padding: 6px 14px; }
+.text-input {
+  width: 100%; min-height: 48px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--text); font: inherit; font-size: 16px;
+}
+.help .label, .help .text-input, .help .btn { margin-top: 8px; }

@@ -1,55 +1,67 @@
 # ClipBridge
 
-iPhoneとWindowsのクリップボードを、スマートに
+iPhone と Windows のクリップボードを、スマートに。
 
-公開サイト: https://clipbridge-ashen.vercel.app/
+公開サイト: https://clipbridge-ashen.vercel.app/ ／ 配布: https://github.com/hiromps/clipbridge/releases
 
-ClipBridgeの紹介サイトと、Windows用のソース配布ファイルです。紹介サイトの操作デモはブラウザ内で完結し、実際の端末へ送信しません。
+このリポジトリには紹介サイト（`dist/`）と Windows アプリ本体（`app/`）が入っています。
 
-## 紹介サイト
-
-`dist/` にHTML・CSS・JavaScript・画像を配置しています。ビルドは不要です。
-
-```powershell
-python -m http.server 8080 --directory dist
+```
+app/        アプリ本体（server.py と web/）。exe もここから作る → 使い方は app/README.md
+dist/       紹介サイト（静的 HTML）。Vercel が配信する。dist/updates/windows.json は旧版 1.x 向けの更新情報
+scripts/    build_windows.py（exe・ZIP・更新マニフェスト）、build_download.py（ソース ZIP）
+.github/    windows-build.yml（テスト → ビルド → 検証 → タグなら GitHub Release）
 ```
 
-Vercelでは `vercel.json` の指定により `dist/` を配信します。
+## 使う人向け
 
-## Windows用アプリ
+1. [Releases](https://github.com/hiromps/clipbridge/releases/latest) から `ClipBridge-Windows.zip` を取得して展開し、`ClipBridge.exe` を開く
+2. ブラウザーに開く PC セットアップ画面の案内に従って Tailscale を接続し、iPhone で QR コードを読む
 
-`dist/downloads/ClipBridge-Windows.zip` をダウンロードして展開し、`ClipBridge.exe` を開いてください。Windows 10 / 11の64ビットPCとTailscaleが必要です。**Pythonの個別インストールは不要**です。セットアップ画面の案内で接続し、iPhone側にはTailscaleと、必要に応じて公開版ショートカットを追加します。
+詳しい手順と仕組みは [`app/README.md`](app/README.md)、配布 ZIP 同梱の `はじめに.txt`（`app/WINDOWS-README.txt`）を参照してください。
+Python で動かす場合は `git clone` して `app\ClipBridge.bat` を実行します。
 
-アプリのソースは `app/` にあります。基本機能、セットアップ、診断・復旧、更新確認・適用はすべて無料です。配布版にコード署名はなく、Windowsが発行元を確認できない旨を表示する場合があります。
-
-## アプリのビルド・テスト
-
-Windows上でPython、PyInstaller、アプリの依存パッケージを用意して実行します。利用者のPCではPythonは不要です。
+## 開発
 
 ```powershell
-python -m pip install -r app/requirements.txt pyinstaller pytest
-python -m pytest tests -q
-python scripts/build_windows.py
+python -m pip install -r app/requirements-dev.txt pyinstaller
+python -m pytest                      # テスト（リポジトリのルートで）
+python scripts/build_windows.py       # build/windows/ に ClipBridge.exe, ClipBridge-Windows.zip, windows.json, SHA256SUMS.txt
+python scripts/build_download.py      # build/source/ClipBridge-Source.zip
+python -m http.server 8080 --directory dist   # 紹介サイトをローカルで確認
 ```
 
-ビルドは `build/windows/ClipBridge.exe`、配布ZIP、`dist/updates/windows.json` を生成します。ソースだけのZIPは `python scripts/build_download.py` で `build/source/` に生成できます。いずれも個人の認証情報は含めません。
+## リリース手順（他の PC に最新版を配る）
 
-## 無料更新の公開
+1. `app/server.py` の `__version__` を上げて（例 `2.1.0`）コミットする
+2. タグを付けて push する
 
-1. `app/release_info.py` のバージョンを上げて、Windows版をビルド・検証します。
-2. GitHubの対応する `vX.Y.Z` リリースに `ClipBridge.exe` とZIP、`SHA256SUMS.txt` を公開します。
-3. その後 `dist/updates/windows.json` とLPをVercelへ反映します。先に更新情報だけを公開しないでください。
+   ```powershell
+   git tag v2.1.0
+   git push origin main --tags
+   ```
 
-アプリは公式GitHubリリースのHTTPS URLだけを受け付け、ダウンロードしたファイルのサイズとSHA-256を検証します。取得・検証に失敗した場合は適用しません。更新の適用は利用者の確認後に行い、旧版と接続トークンを保存します。現在の更新検証は公開マニフェストとの一致確認であり、コード署名や独立した署名検証ではありません。
+3. GitHub Actions がテスト → exe ビルド → 同梱 self-test → **Release `v2.1.0`** を作る（`ClipBridge.exe`, `ClipBridge-Windows.zip`, `SHA256SUMS.txt`, `windows.json`）
 
-## 移行・復旧
+これだけで、各 PC の ClipBridge が `releases/latest/download/windows.json` を読んで「新しいバージョン」を表示し、
+「アップデートして再起動」で入れ替わります（サイズと SHA-256 を検証）。git clone で動かしている PC は同じボタンで `git pull` されます。
+タグとバージョンが一致しないとワークフローが失敗します。
 
-接続データは `%LOCALAPPDATA%\ClipBridge\config.json`、アプリは同フォルダの `versions\バージョン番号` に保存します。診断・更新からサーバー起動、HTTPS修復、旧版への切り替え、自動起動の設定を行えます。既存の別サービスが443番を使用している場合、修復は上書きせず中止します。Tailscaleの管理者許可とアカウントへのログインは利用者が行います。
+- 紹介サイトのダウンロードボタンは `releases/latest/download/ClipBridge-Windows.zip` を指すので、リリースのたびに更新する必要はありません
+- `dist/updates/windows.json` は **旧版 1.x だけ** が読む更新情報です。1.x の PC が残っている間は、Release 作成後に
+  Release の `windows.json` をそのままコピーして push します（Vercel が自動で配信します）
 
-旧Python版から移行する場合は旧サーバーと自動起動タスクを停止し、必要なら旧 `config.json` を上記保存先へコピーしてから新版を起動します。詳細は `app/WINDOWS-README.txt` を参照してください。
+  ```powershell
+  gh release download v2.1.0 -p windows.json -O dist/updates/windows.json
+  git commit -am "Point legacy update feed at 2.1.0" ; git push
+  ```
 
-トークンなどの接続情報は各PCで生成します。配布ファイルに個人の接続情報は含まれていません。画像は操作イメージと、サンプルデータを表示した実際のアプリ画面です。
+## 安全性
+
+- サーバーは `127.0.0.1` だけで待ち受け、iPhone からは Tailscale Serve（tailnet 内限定の HTTPS）経由で届きます
+- 更新は公式 Releases の HTTPS URL だけを受け付け、ダウンロード後にサイズと SHA-256 を検証してから入れ替えます。配布版にコード署名はありません
+- 接続トークンは各 PC の `%LOCALAPPDATA%\ClipBridge\config.json`（ソース版は `app/config.json`）に生成され、配布物には含まれません
 
 ## 注意
 
-テキスト専用です。コピーの常時自動同期、画像やファイルの送受信には対応していません。利用時はPCのClipBridgeが動作し、両端末が同じTailscaleネットワークへ接続している必要があります。
+テキスト専用です。コピーの常時自動同期、画像やファイルの送受信には対応していません。利用時は PC の ClipBridge が動作し、両端末が同じ Tailscale ネットワークへ接続している必要があります。

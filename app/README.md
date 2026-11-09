@@ -1,109 +1,150 @@
-# ClipBridge
+# ClipBridge（アプリ本体）
 
-この文書はPythonから実行するソース版向けです。通常のWindows利用ではPythonは不要です。配布ZIPの `ClipBridge.exe` を開いてセットアップ画面に従ってください。無料の診断・復旧・更新機能、旧版からの移行手順は `WINDOWS-README.txt` にあります。
+iPhone と Windows PC の間でクリップボードのテキストを受け渡す小さな Web アプリです。
+PC 上で動くサーバーに、同じ Tailscale ネットワーク（tailnet）の iPhone から HTTPS でアクセスします。
+インターネット上のサーバーは経由しません。
 
-PCではデスクトップの「ClipBridge」または `ClipBridge.bat` から開いてください。起動時にTailscaleのHTTPS接続を確認し、利用可能ならiPhoneと同じHTTPSアドレスを認証情報付きで開きます。利用できない場合はPCローカル画面を開きます。HTTPSとローカル画面、別のブラウザ、Safariとホーム画面版では認証情報の保存先が異なるため、それぞれ初回の設定が必要です。
+- PC で Ctrl+C → iPhone の画面に即時表示 → 「iPhone にコピー」
+- iPhone でコピー → 「PC へ送る」 → PC のクリップボードに入る
+- 配布版 `ClipBridge.exe` は Python 不要。ソース版は Python 3.10 以上の標準ライブラリのみ
 
-PCでClipBridgeの「接続管理」タブを開くと、「iPhoneを接続する」に認証情報付きのQRコードとセットアップURLが表示されます。iPhoneのTailscaleを接続し、カメラでQRコードを読み取ってSafariで開いてください。「セットアップURLをコピー」からURLをコピーすることもできます。ホーム画面版で接続情報を求められた場合は、Safariの「接続管理」にある同じボタンでURLをコピーし、ホーム画面版の接続設定へ貼り付けます。接続情報がない場合は接続管理が開き、設定が完了するとクリップボード画面へ戻ります。URLには認証情報が含まれるので他人へ共有しないでください。
+## 入手方法（2 とおり）
 
-iPhone と Windows PC の間で**テキストだけ**を受け渡す小さな Web アプリです。PC 上の Python サーバーに、同じ Tailscale ネットワークに参加した iPhone から HTTPS でアクセスします。
+| | 配布版（おすすめ） | ソース版（開発・改造向け） |
+|---|---|---|
+| 入手 | [GitHub Releases](https://github.com/hiromps/clipbridge/releases/latest) の `ClipBridge-Windows.zip` | `git clone https://github.com/hiromps/clipbridge.git` |
+| 起動 | `ClipBridge.exe` をダブルクリック | `app\ClipBridge.bat` をダブルクリック（Python 3.10 以上が必要） |
+| 保存先 | `%LOCALAPPDATA%\ClipBridge\versions\<版>\`（初回に自動で保存、ショートカット作成） | clone したフォルダー |
+| 設定 | `%LOCALAPPDATA%\ClipBridge\config.json` | `app\config.json` |
+| アップデート | PC 画面の「アップデートして再起動」（GitHub Releases から取得・検証） | PC 画面の「アップデートして再起動」（`git pull --ff-only`）または手動で `git pull` |
 
-## 事前準備
+どちらも起動するとブラウザーに **PC セットアップ画面** `http://127.0.0.1:8787/pc` が開きます。
 
-初回の画面では「3ステップの接続案内を開く」から、接続確認・テスト送信・完了まで進めます。「テスト送信」は入力した文字をPCのクリップボードへ書き込み、読み戻して一致を確認します。現在のコピー内容が置き換わるため、必要な内容は先に貼り付けて保存してください。設定完了後は初回案内が非表示になり、接続管理から再度テストできます。
+## はじめかた（3 ステップ）
 
-画面上部に接続先PC名と接続状態が表示されます。「接続を確認」ではPCのTailscale導入・接続状態とClipBridgeのHTTPS公開設定を確認します。通信そのものが届かないときは原因を断定せず、PCの起動・ClipBridge・Tailscaleの確認手順を表示します。iPhone側のTailscale導入・VPN接続状態はブラウザから自動判定できません。
+### 1. PC: 一度だけ準備
 
-Tailscaleが未導入の場合は、接続管理の「iPhone用 · App Store」または「Windows用をダウンロード」からインストールします。両端末で同じアカウントのネットワークに接続してください。iPhoneのVPN構成追加を許可して接続をオンにしてから、セットアップQRコードを読み取ります。
+1. [Tailscale](https://tailscale.com/download) をインストールしてログインする
+2. 配布版なら `ClipBridge.exe`、ソース版なら `app\ClipBridge.bat` をダブルクリックする
 
-接続管理の準備チェックでは、iPhoneへのインストール・PCへのインストール・ログインと接続・PCの公開設定を個別に完了にできます。チェックした項目は説明やダウンロードリンクごと非表示になり、状態はその端末のブラウザに保存されます。「完了した項目を表示」で見直し、チェックを外すと説明を再表示できます。チェックは利用者の記録であり、接続テストの診断結果とは別です。
+PC セットアップ画面で Tailscale の状態が自動で確認され、HTTPS 公開（Tailscale Serve）も自動で設定されます。
+赤い項目があれば、画面の案内に従ってください。MagicDNS と HTTPS 証明書は Tailscale の管理画面（DNS ページ）で有効にする必要があります。
 
-PCでは「iPhoneへ共有する」「PCの内容をコピー」、iPhoneでは「PCへ送る」「iPhoneへ取る」のように操作端末に合わせて表示します。PCから共有した内容は、iPhone側の「iPhoneへ取る」で取得します。送受信に成功すると、文字数と操作時刻が画面に表示されます。コピーをブラウザが許可しない場合は手動コピー・貼り付けの案内が表示されます。
+### 2. iPhone: QR コードを読む
 
-セットアップQRコードから開くと接続管理が表示され、公開版「CopyBridge-公開用」の追加リンク、送信先URL・接続トークンのコピーボタンを利用できます。追加はiPhone側で確認し、ショートカット内のURLとX-Tokenを設定します。コントロールセンターへの登録もiPhone側で行います。「クリップボードへ進む」でセットアップ表示を終了できます。通常の起動ではクリップボード画面が表示されます。個人のトークンを含めたショートカットは公開しないでください。
+1. iPhone に Tailscale アプリを入れて、PC と同じアカウントでログインし、接続をオンにする
+2. PC 画面の **QR コードをカメラで読み取る**（または表示された URL を Safari で開き、6 桁のコードを入力する）
 
-- Windows に Python 3.10 以上と Tailscale をインストールし、Tailscale にログインします。
-- iPhone にも Tailscale をインストールし、同じ tailnet にログインします。
-- Tailscale の管理画面で **MagicDNS** と **HTTPS Certificates** を有効にします。
-- PC で `python --version` と `tailscale status` が使えることを確認します。
+接続されると PC 画面に「iPhone が接続しました」と表示されます。
 
-## セットアップ
+### 3. iPhone: ホーム画面に追加（おすすめ）
 
-PowerShell でこのディレクトリに移動し、次を実行します。
+Safari の共有ボタン → 「ホーム画面に追加」。追加したアプリは接続設定を引き継ぐので、コードの再入力は不要です。
+
+## 複数の PC を使い分ける
+
+iPhone 側は URL（ホーム画面のアイコン）を 1 つのまま、画面上部の PC 名をタップして接続先を切り替えられます。
+
+1. 2 台目以降の PC でも ClipBridge を起動しておく（同じ Tailscale アカウント）
+2. iPhone の ClipBridge で、上部の PC 名 →「＋ PC を追加」。同じ tailnet で ClipBridge が動いている PC が一覧に出ます
+3. 追加したい PC を選び、その PC のセットアップ画面に表示されている 6 桁コードを入力する
+
+- 一覧に出ない PC は「URL で追加」から、その PC の「iPhone で開く URL」を入力して追加できます
+- 切り替えると、表示される PC のクリップボードと「PC へ送る」の送信先がその PC に変わります
+- 最初につないだ PC（ハブ）の電源が落ちていても、ホーム画面のアイコンから画面は開けます（Service Worker が画面をキャッシュ）。上部の PC 名から別の PC に切り替えてください
+- 仕組み: 各 PC へは iPhone から直接届きます（中継なし）。他の PC の API を呼ぶために、サーバーは同じ tailnet のオリジンからのクロスオリジン呼び出し（CORS）だけを許可し、トークン認証はそのまま必要です。PC 用の管理画面と操作 API はクロスオリジンでは呼べません
+
+## 使い方
+
+| やりたいこと | 操作 |
+|---|---|
+| PC の文字を iPhone へ | PC で Ctrl+C → iPhone の画面に表示される → 「iPhone にコピー」をタップ |
+| iPhone の文字を PC へ | iPhone でコピー → 「iPhone のコピー内容を PC へ送る」→ 「ペースト」をタップ |
+| 貼り付け欄から送る | 「ここに貼り付けると自動で送ります」欄に長押しペースト |
+
+iOS の仕様で、iPhone 側のクリップボードを読むときは毎回「ペースト」の確認タップが必要です。
+アプリ（Web ページ）を開いている間だけ同期します。バックグラウンドでは動きません。
+
+## PC セットアップ画面でできること
+
+- Tailscale のチェック（インストール / 接続 / MagicDNS / HTTPS 証明書 / Serve / Funnel オフ）と修復ボタン
+- 接続用 QR コード・URL・6 桁ペアリングコード（1 回使うたびに更新。5 回間違えても更新）
+- 接続してきた端末の一覧（最終アクセス時刻）
+- **アップデート**: 起動 10 秒後と 6 時間ごとに新しい版を確認し、「アップデートして再起動」で適用（下記）
+- Windows サインイン時の自動起動（スタートアップフォルダーに `ClipBridge.vbs` を置く。管理者権限不要）
+- すべての iPhone の接続解除（トークン再発行）、サーバー停止
+
+コマンドラインからも操作できます（配布版は `ClipBridge.exe` に同じ引数を渡せます）。
 
 ```powershell
-pip install -r requirements.txt
-python make_icon.py
-python server.py
+python server.py                   # 起動してセットアップ画面を開く
+python server.py --no-browser      # 画面を開かずに起動
+python server.py --startup on      # 自動起動を登録（off で解除）
+python server.py --port 8790       # ポート変更（Tailscale Serve の転送先も合わせて再設定されます）
+python server.py --no-update-check # 更新の自動確認をしない
+python server.py --no-serve        # Tailscale Serve を自動設定しない（開発・テスト用）
 ```
 
-初回起動で `config.json` とランダムなトークンが生成されます。ファイルは外部へ共有しないでください。サーバーは `127.0.0.1:8787` のみで待ち受けます。コンソールの `セットアップURL` を控えます。MagicDNS 名を取得できない場合は `<MagicDNS名>` と表示されるため、`tailscale status --json` の `Self.DNSName` を確認して置き換えてください。
+## アップデートの仕組み
 
-PyPI に接続できず `pyperclip` を導入できない Windows 環境でも、サーバーは標準ライブラリの Windows クリップボード API を使って動作します。ただし、正式な自動テストには `pytest` の導入が必要です。
+- **配布版**: `https://github.com/hiromps/clipbridge/releases/latest/download/windows.json` を読み、版が新しければ
+  「アップデートして再起動」を表示します。押すと GitHub Releases の `ClipBridge.exe` をダウンロードし、
+  マニフェストのサイズと SHA-256 を検証してから `%LOCALAPPDATA%\ClipBridge\versions\<新しい版>\` に保存し、
+  ショートカットを付け替えて再起動します。設定（トークン）は引き継がれ、旧版の exe も残ります。
+  マニフェストの URL は公式リポジトリの Releases 以外を受け付けません。
+- **ソース版（git clone）**: `origin` の同じブランチに新しいコミットがあれば表示し、`git pull --ff-only` のあと同じ引数で再起動します。
+  ローカルに未コミットの変更があると中止します。
+- 旧版（1.x）の exe からは、旧版の「診断・更新」→「更新を確認する」で 2.0 に更新できます（保存先とトークンは共通）。
 
-別の PowerShell で以下を実行します。スクリプトは利用中の Tailscale の `serve --help` を確認し、HTTPS のポート443でバックグラウンドの Serve を設定して状態を表示します。
+## セキュリティ
 
-```powershell
-.\setup_tailscale.ps1
+- サーバーは `127.0.0.1` だけで待ち受け、外からは Tailscale Serve（tailnet 内限定の HTTPS）経由のみ届きます
+- iPhone 用 API はトークン認証です。トークンは `config.json` に保存されます（共有しないでください）
+- PC 用の管理画面と操作 API は、ループバックから直接来たリクエストで、かつ `Host` が自分自身のときだけ応答します（DNS リバインディング・CSRF 対策）
+- ペアリングコードは 6 桁・使い捨て・5 回失敗で更新
+- クリップボードの内容、トークン、コードはログに出力しません
+- Funnel（インターネット公開）が有効になっていると画面で警告します
+- 更新は HTTPS で取得し、サイズと SHA-256 を検証します（コード署名はありません）
+
+## ファイル構成
+
 ```
-
-Tailscale の管理者パイプへのアクセス拒否が出る場合は、PowerShell を管理者として開いて再実行してください。PowerShell の実行ポリシーで止まる場合は `powershell -ExecutionPolicy Bypass -File .\setup_tailscale.ps1` とします。iPhone の Safari で **サーバーが表示した** `https://<MagicDNS名>/#t=<token>` を開きます。`#t=` 以降のトークンは初回に端末内へ保存され、アドレスバーから消えます。この URL は認証情報を含むため他人へ送らないでください。
-
-画面の「📤 PCへ送る」で iPhone のコピー内容を PC に送れます。「📥 iPhoneへ取る」で PC のコピー内容を iPhone に保存します。PC の現在の内容は画面が表示されている間、約1.5秒ごとに更新されます。
-
-## ホーム画面に追加
-
-Safari の共有ボタンから「ホーム画面に追加」を選びます。追加した ClipBridge を開いて操作します。初回は必ずトークン付きセットアップURLを Safari で開いてください。**ホーム画面版は Safari と localStorage を共有しない**ため、初回起動で「接続用の情報がありません」と出ることがあります。その場合はホーム画面版の「セットアップURL またはトークン」欄に、PC のコンソールに表示されたセットアップURL全体を貼り付けて「接続する」を押してください。ホーム画面版に保存されるので、次回から入力は不要です。401 の場合も同じ欄から設定し直せます。URL はトークンを含むため、他人へ共有しないでください。
-
-## 常駐化とアンインストール
-
-Windows でワンクリック起動する場合は、このフォルダーの `ClipBridge.bat` を一度ダブルクリックします。デスクトップに `ClipBridge` ショートカットが作成され、以後はそのショートカットをクリックするだけで、必要ならサーバーを起動してブラウザーを開きます。`ClipBridge.lnk` をデスクトップへコピーしても同じです。すでにサーバーが動いている場合は二重起動しません。デスクトップのショートカットを削除すれば、この起動方法だけを解除できます。
-
-`python server.py` が動作することを確認後、PowerShell で次を実行するとログオン時に `pythonw.exe server.py` を起動するタスク `ClipBridge` が登録されます。再実行で更新されます。
-
-```powershell
-.\install_startup.ps1
+app/
+├── ClipBridge.bat        ソース版をダブルクリックで起動
+├── server.py             サーバー本体（標準ライブラリのみ。exe もこのファイルから作る）
+├── WINDOWS-README.txt    配布 ZIP に同梱する「はじめに.txt」
+├── ClipBridge.ico        exe のアイコン
+├── web/
+│   ├── index.html, app.js    iPhone 用画面
+│   ├── pc.html, pc.js        PC 用セットアップ画面
+│   ├── style.css, icon-*.png
+│   └── vendor/qrcode.js      QR 生成（qrcode-generator, MIT）
+├── tests/test_server.py  結合テスト（pytest）
+└── tools/make_icons.py   アイコン生成（開発用、Pillow）
 ```
-
-タスク登録後も、その場でサーバーを起動するには `python server.py` を実行するか、次回ログオンしてください。アンインストールする場合は次を実行し、起動中のサーバーを停止してください。ClipBridge のためだけに Tailscale Serve を設定した PC では、Serve 設定も解除できます。`tailscale serve reset` はその PC の Serve 設定をすべて消すため、他のサービスを公開している場合は実行せず、設定を個別に見直してください。
-
-```powershell
-Unregister-ScheduledTask -TaskName ClipBridge -Confirm:$false
-tailscale serve reset
-```
-
-その後、このディレクトリを削除できます。`config.json` はトークンを含むため安全に管理してください。
 
 ## テスト
 
-```powershell
-pytest
-```
-
-テストは `pyperclip.copy/paste` を差し替えた HTTP 通信で実行します。実際の PC クリップボードでの確認は、サーバー起動後に次の例を使用できます。`config.json` は外部へ出さないでください。
+リポジトリのルートで実行します。
 
 ```powershell
-$token = (Get-Content .\config.json -Raw | ConvertFrom-Json).token
-curl.exe -i http://127.0.0.1:8787/api/health
-curl.exe -i -H "X-Token: $token" -H "Content-Type: text/plain; charset=utf-8" --data-binary "ClipBridge確認" http://127.0.0.1:8787/api/clip
-curl.exe -i -H "X-Token: $token" http://127.0.0.1:8787/api/clip
+pip install -r app/requirements-dev.txt
+python -m pytest
 ```
 
-最初のコマンドは 401、後のコマンドは送信と取得に成功するはずです。
+テストはクリップボードと Tailscale と git を差し替えて実行します（Windows では実クリップボードの往復テストも 1 件走り、元の内容を復元します）。
 
 ## トラブルシュート
 
-- **証明書エラー**: Tailscale 管理画面の MagicDNS と HTTPS Certificates を確認します。端末が tailnet に接続されているか、DNS 名が正しいかも確認します。
-- **401**: セットアップURLからもう一度開いてください。`config.json` を作り直した場合、古いトークンは使えません。
-- **タイルから接続できない**: PC のサーバーが動いているか、`tailscale serve status` が HTTPS 443 を示すか、PC と iPhone の Tailscale が接続中かを確認します。
-- **貼り付け確認が出る**: iOS Safari の `readText()` は実行のたびに「ペースト」確認の吹き出しが出ます。つまり **1タップ + ペースト許可1タップ** になります。これは iOS の仕様で回避できません。
-- **直接コピーや読み取りが失敗する**: 画面に表示される手動貼り付け・長押しコピーの欄を使ってください。
+- **QR が表示されない / 「HTTPS 公開」が赤い**: Tailscale 管理画面の DNS ページで MagicDNS と HTTPS Certificates を有効にし、「再確認」を押します。`tailscale serve` が「Access is denied」になる場合は、管理者として開いた PowerShell で画面に表示されたコマンドを実行してください。
+- **iPhone で「PC に接続できません」**: iPhone の Tailscale がオンか、PC で ClipBridge が起動しているか（PC 画面が開くか）を確認します。
+- **コードが違うと言われる**: コードは 1 回使うと変わります。PC 画面の最新のコードを入力してください。
+- **「新着」が出ない**: アプリを開き直すと再接続します。PC 側で `tailscale serve status` が ClipBridge のポートを指しているか確認してください。
+- **443 を別のサービスで使っている**: 空いている HTTPS ポート（8443 など）を自動で選びます。URL は `https://<PC名>.<tailnet>.ts.net:8443/` のようになります。
+- **更新情報を取得できない**: GitHub に届かない環境では確認に失敗しますが、本体の動作には影響しません。手動で Releases から ZIP を取得して exe を開けば、同じ保存先に新しい版が入ります。
 
-**バックグラウンドでの自動同期はできません。** アプリ (PWA) を開いている間だけ動きます。「開いたとき自動で送る」を有効にしても、iOS のペースト許可が必要です。
+## アンインストール
 
-## 実機での手動確認チェックリスト
-
-- [ ] iPhone の Tailscale を接続し、Safari でセットアップURLを開ける。
-- [ ] iPhone でテキストをコピーし「PCへ送る」を押して、PC で貼り付けできる。
-- [ ] PC でテキストをコピーし「iPhoneへ取る」を押して、iPhone で貼り付けできる。
-- [ ] Safari からホーム画面に追加し、追加したアプリでも操作できる。
+1. PC 画面で自動起動をオフにし、「サーバーを停止する」を押す
+2. Tailscale Serve の設定を外す: `tailscale serve --https=443 off`（他のサービスで Serve を使っている場合は、そのポートだけを外してください）
+3. 配布版はデスクトップとスタートメニューの `ClipBridge` ショートカットと `%LOCALAPPDATA%\ClipBridge` フォルダーを、ソース版は clone したフォルダーを削除する（`config.json` にトークンが入っています）
