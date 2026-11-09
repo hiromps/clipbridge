@@ -1,18 +1,22 @@
-"""Build the Windows distribution from an explicit public-file allowlist."""
+"""ソース配布 ZIP（Python で動かす人向け）を公開ファイルの許可リストから作る。
+
+    python scripts/build_download.py  → build/source/ClipBridge-Source.zip
+
+設定ファイル（config.json）やビルド成果物は含めない。
+"""
 from pathlib import Path
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = [
-    "desktop.py", "native_ui.py", "release_info.py", "WINDOWS-README.txt",
-    "server.py", "ClipBridge.bat", "launch_clipbridge.ps1", "setup_tailscale.ps1",
-    "install_startup.ps1", "make_icon.py", "README.md", "requirements.txt",
-    "web/index.html", "web/manifest.webmanifest", "web/icon-180.png",
+    "server.py", "ClipBridge.bat", "README.md", "WINDOWS-README.txt", "requirements-dev.txt",
+    "web/index.html", "web/app.js", "web/pc.html", "web/pc.js", "web/style.css",
+    "web/icon-180.png", "web/icon-512.png", "web/vendor/qrcode.js", "web/vendor/LICENSE-qrcode-generator.txt",
+    "tests/test_server.py", "tools/make_icons.py",
 ]
-target = ROOT / "build/source/ClipBridge-Source.zip"
+target = ROOT / "build" / "source" / "ClipBridge-Source.zip"
 target.parent.mkdir(parents=True, exist_ok=True)
 with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
     for name in FILES:
-        source = ROOT / "app" / name
-        archive.write(source, Path("ClipBridge") / name)
-print(f"Built {target.name} from {len(FILES)} public application files")
+        archive.write(ROOT / "app" / name, Path("ClipBridge") / name)
+print(f"Built {target} from {len(FILES)} files")

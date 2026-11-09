@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#2563eb">
+  <link rel="icon" type="image/png" href="/icon-180.png">
+  <link rel="stylesheet" href="/style.css">
+  <title>ClipBridge — PC セットアップ</title>
+</head>
+<body class="pc">
+  <header class="topbar">
+    <div class="brand"><img src="/icon-180.png" alt="" width="30" height="30"><span>ClipBridge</span><span class="sub">Windows 側</span></div>
+    <div id="serverPill" class="pill ok">サーバー稼働中</div>
+  </header>
+
+  <main>
+    <section class="card step" aria-labelledby="step1">
+      <div class="step-head"><span class="num">1</span><h2 id="step1">Tailscale の確認</h2></div>
+      <p class="lead">iPhone と PC を安全につなぐために Tailscale を使います。すべて緑になれば OK です。</p>
+      <ul id="checks" class="checks" aria-live="polite"><li><span class="icon">⏳</span><span>確認中…</span></li></ul>
+      <div class="actions">
+        <button id="serveBtn" class="btn primary" type="button" hidden>HTTPS 公開を設定する</button>
+        <button id="recheckBtn" class="btn" type="button">再確認</button>
+      </div>
+      <p id="serveMsg" class="msg" aria-live="polite"></p>
+    </section>
+
+    <section class="card step" aria-labelledby="step2">
+      <div class="step-head"><span class="num">2</span><h2 id="step2">iPhone で接続する</h2></div>
+      <p class="lead">iPhone に Tailscale アプリを入れて同じアカウントでログインし、接続をオンにしてから、カメラで QR コードを読み取ります。</p>
+      <div class="pair-grid">
+        <div id="qr" class="qr" role="img" aria-label="接続用 QR コード"><div class="placeholder">手順 1 が完了すると QR コードが表示されます</div></div>
+        <div class="pair-info">
+          <p class="label">iPhone で開く URL</p>
+          <p class="url"><code id="publicUrl">—</code></p>
+          <p class="label">ペアリングコード（QR を使わない場合に入力）</p>
+          <div id="pairCode" class="code" aria-live="polite">------</div>
+          <p class="hint">コードは 1 回接続するたびに新しくなります。<button id="newCodeBtn" class="link" type="button">新しいコードを発行</button></p>
+        </div>
+      </div>
+      <div id="devices" class="devices" aria-live="polite"><p class="waiting">iPhone からの接続を待っています…</p></div>
+    </section>
+
+    <section class="card step steps" aria-labelledby="step3">
+      <div class="step-head"><span class="num">3</span><h2 id="step3">iPhone のホーム画面に追加（おすすめ）</h2></div>
+      <ol>
+        <li>接続後、Safari 下部の共有ボタンをタップ</li>
+        <li>「ホーム画面に追加」→「追加」</li>
+        <li>以後はホーム画面の ClipBridge を開くだけ（接続設定は引き継がれます）</li>
+      </ol>
+      <p class="hint">使い方: PC で Ctrl+C すると iPhone の画面に表示され「iPhone にコピー」で取り込めます。iPhone でコピーした文字は「PC へ送る」で PC のクリップボードに入ります。</p>
+    </section>
+
+    <section class="card" aria-labelledby="updateTitle">
+      <div class="card-head">
+        <h2 id="updateTitle">アップデート</h2>
+        <span id="updateVersion" class="meta"></span>
+      </div>
+      <p id="updateMsg" class="msg" aria-live="polite">更新を確認しています…</p>
+      <div class="actions">
+        <button id="updateApplyBtn" class="btn primary" type="button" hidden>アップデートして再起動</button>
+        <button id="updateCheckBtn" class="btn" type="button">更新を確認</button>
+        <a id="updateLink" class="btn" href="https://github.com/hiromps/clipbridge/releases" target="_blank" rel="noopener noreferrer" hidden>配布ページを開く ↗</a>
+      </div>
+      <p id="updateHint" class="hint"></p>
+    </section>
+
+    <section class="card" aria-labelledby="settingsTitle">
+      <h2 id="settingsTitle">設定</h2>
+      <label class="switch" for="startupToggle"><input id="startupToggle" type="checkbox"><span>Windows にサインインしたら自動で起動する</span></label>
+      <p id="startupMsg" class="hint"></p>
+      <div class="actions">
+        <button id="rotateBtn" class="btn danger" type="button">すべての iPhone の接続を解除する</button>
+        <button id="stopBtn" class="btn" type="button">サーバーを停止する</button>
+      </div>
+      <div class="pc-footer">
+        <span id="infoLine"></span>
+        <span>この画面は PC 自身（127.0.0.1）からのみ開けます。設定ファイル: <code id="configPath"></code></span>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="/vendor/qrcode.js"></script>
+  <script src="/pc.js"></script>
+</body>
+</html>
