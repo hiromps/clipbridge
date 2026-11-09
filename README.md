@@ -48,8 +48,13 @@ python -m http.server 8080 --directory dist   # 紹介サイトをローカル�
 タグとバージョンが一致しないとワークフローが失敗します。
 
 - 紹介サイトのダウンロードボタンは `releases/latest/download/ClipBridge-Windows.zip` を指すので、リリースのたびに更新する必要はありません
-- `dist/updates/windows.json` は **旧版 1.x だけ** が読む更新情報です。1.x の利用者が残っていなければ更新不要です
-  （更新する場合は Release の `windows.json` をそのままコピーして Vercel に反映します）
+- `dist/updates/windows.json` は **旧版 1.x だけ** が読む更新情報です。1.x の PC が残っている間は、Release 作成後に
+  Release の `windows.json` をそのままコピーして push します（Vercel が自動で配信します）
+
+  ```powershell
+  gh release download v2.1.0 -p windows.json -O dist/updates/windows.json
+  git commit -am "Point legacy update feed at 2.1.0" ; git push
+  ```
 
 ## 安全性
 
