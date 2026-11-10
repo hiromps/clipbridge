@@ -7,6 +7,7 @@ import http.client
 import importlib.util
 import io
 import json
+import subprocess
 import sys
 import threading
 import time
@@ -1010,6 +1011,53 @@ def test_pc_image_is_pushed_to_phone_and_downloadable(app):
     assert app.current_image() is None
     assert request(base, "/api/image", token=token)[0] == 404
     assert as_json(request(base, "/api/clip", token=token)[2])["image"] is None
+
+
+def test_copied_image_file_is_treated_as_image(app, tmp_path):
+    """エクスプローラーで画像ファイルをコピーした場合も iPhone に画像として届く。画像以外のファイルは other。"""
+    photo = tmp_path / "photo.png"
+    photo.write_bytes(tiny_png(3, 2))
+    app.fake_clipboard.external_copy_file(photo)
+    time.sleep(0.3)
+    clip = as_json(request(app.base, "/api/clip", token=app.token)[2])
+    assert clip["kind"] == "image" and clip["image"]["width"] == 3
+    assert request(app.base, "/api/image?id=" + clip["image"]["id"], token=app.token)[2] == photo.read_bytes()
+    document = tmp_path / "notes.txt"
+    document.write_bytes(b"hello world, definitely not an image")
+    app.fake_clipboard.external_copy_file(document)
+    time.sleep(0.3)
+    clip = as_json(request(app.base, "/api/clip", token=app.token)[2])
+    assert clip["kind"] == "other" and clip["image"] is None
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows のクリップボード実装")
+def test_windows_clipboard_reads_copied_image_file(tmp_path):
+    clipboard = server.WindowsClipboard()
+    try:
+        original_text, original_kind = clipboard.read()
+    except server.ClipboardError as exc:
+        pytest.skip(f"clipboard is not readable right now: {exc}")
+    if original_kind not in ("text", "empty"):
+        pytest.skip("clipboard holds non-text content that could not be restored")
+    png = tiny_png(5, 3)
+    photo = tmp_path / "copied.png"
+    photo.write_bytes(png)
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    completed = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", f"Set-Clipboard -LiteralPath '{photo}'"],
+        capture_output=True, timeout=30, creationflags=flags,
+    )
+    if completed.returncode != 0:
+        pytest.skip("Set-Clipboard is not available")
+    try:
+        assert clipboard.read() == ("", "image")
+        assert clipboard.read_image() == png
+        other = tmp_path / "notes.txt"
+        other.write_bytes(b"hello world, definitely not an image")
+        subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", f"Set-Clipboard -LiteralPath '{other}'"], capture_output=True, timeout=30, creationflags=flags)
+        assert clipboard.read() == ("", "other")
+    finally:
+        clipboard.write(original_text if original_kind == "text" else "")
 
 
 def test_pc_image_too_large_or_unreadable_is_reported_without_preview(app, monkeypatch):
