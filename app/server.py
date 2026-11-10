@@ -52,7 +52,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-__version__ = "2.4.0"
+__version__ = "2.4.1"
 APP_NAME = "ClipBridge"
 FROZEN = bool(getattr(sys, "frozen", False))  # PyInstaller でビルドした exe 版か
 ROOT = Path(__file__).resolve().parent
@@ -2736,7 +2736,12 @@ def make_handler(app: ClipBridgeApp):
                 # iOS Safari が慣例的に探しに来るサイズ違いのアイコン名をまとめて返す
                 return self._file("icon-180.png", "image/png")
             if path == "/api/health":
-                return self._json(200, {"ok": True, "app": APP_NAME, "version": __version__, "pc_name": app.pc_name, "pro": app.pro})
+                update = app.updater.info
+                return self._json(200, {
+                    "ok": True, "app": APP_NAME, "version": __version__, "pc_name": app.pc_name, "pro": app.pro,
+                    "update_available": bool(update.get("available")),
+                    "latest_version": update.get("latest") if update.get("available") else None,
+                })
             if path.startswith("/api/history"):
                 return self._history_get(path, query)
             if path.startswith("/pc/api/history"):

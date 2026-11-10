@@ -70,8 +70,15 @@
     pcSendText: $('pcSendText'),
     pcSendBtn: $('pcSendBtn'),
     pcSendMsg: $('pcSendMsg'),
+    updateToast: $('updateToast'),
+    updateToastTitle: $('updateToastTitle'),
+    updateToastDetail: $('updateToastDetail'),
+    updateToastApply: $('updateToastApply'),
+    updateToastLink: $('updateToastLink'),
+    updateToastLater: $('updateToastLater'),
     toast: $('toast'),
   };
+  const UPDATE_DISMISS_KEY = 'clipbridge.updateDismissed'; // 「あとで」を押した版（同じ版では再表示しない）
   let lastClipHash = null;
   let clipFirstLoad = true;
   let clipLoading = false;
@@ -584,12 +591,82 @@
     } else {
       els.updateHint.textContent = 'ソース版です。配布ページから新しい版を取得するか、git clone したフォルダーから起動するとここから更新できます。';
     }
+    renderUpdateToast(update);
   }
+
+  // 画面上部のお知らせ。新しい版があるあいだ出し続け、「あとで」でその版だけ閉じる
+  function dismissedUpdate() {
+    try { return localStorage.getItem(UPDATE_DISMISS_KEY); } catch { return null; }
+  }
+
+  function reserveToastSpace() {
+    // 固定表示のトーストが先頭のカードに重ならないよう、本文の上に余白を取る
+    const main = document.querySelector('main');
+    main.style.paddingTop = els.updateToast.hidden ? '' : `${els.updateToast.offsetHeight + 24}px`;
+  }
+
+  function renderUpdateToast(update) {
+    const latest = update.latest || '';
+    const show = !!(update.available && latest) && !updateBusy && dismissedUpdate() !== latest;
+    if (restarting) {
+      els.updateToast.hidden = false;
+      els.updateToastTitle.textContent = '新しいバージョンで再起動しています…';
+      els.updateToastDetail.textContent = '数秒でこの画面に戻ります。';
+      els.updateToastApply.hidden = true;
+      els.updateToastLink.hidden = true;
+      els.updateToastLater.hidden = true;
+      reserveToastSpace();
+      return;
+    }
+    els.updateToast.hidden = !show;
+    if (!show) { reserveToastSpace(); return; }
+    els.updateToastTitle.textContent = update.method === 'git'
+      ? `新しい変更があります（${update.detail}）`
+      : `新しいバージョン ${latest} があります`;
+    els.updateToastDetail.textContent = update.method === 'git'
+      ? `${update.latest} ・ git pull で更新して再起動します`
+      : `${update.detail} ・ GitHub Releases から取得して検証し、入れ替えます。接続設定は引き継がれます`;
+    els.updateToastApply.hidden = !update.can_apply;
+    els.updateToastLink.hidden = !!update.can_apply;
+    if (update.releases_url) els.updateToastLink.href = update.releases_url;
+    els.updateToastLater.hidden = false;
+    reserveToastSpace();
+  }
+  window.addEventListener('resize', reserveToastSpace);
+
+  async function applyUpdate() {
+    const update = (lastStatus && lastStatus.update) || {};
+    const what = update.method === 'git' ? '最新の変更' : `バージョン ${update.latest}`;
+    if (!window.confirm(`${what} を適用して ClipBridge を再起動します。iPhone との接続は数秒間切れますが、設定は引き継がれます。続けますか？`)) return;
+    updateBusy = true;
+    if (lastStatus) renderUpdate(lastStatus);
+    try {
+      const result = await adminPost('update/apply');
+      restarting = true;
+      restartAt = Date.now() / 1000;
+      toast(result.message);
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      updateBusy = false;
+      if (lastStatus) renderUpdate(lastStatus);
+    }
+  }
+
+  els.updateToastApply.addEventListener('click', applyUpdate);
+  els.updateToastLater.addEventListener('click', () => {
+    const latest = (lastStatus && lastStatus.update && lastStatus.update.latest) || '';
+    try { localStorage.setItem(UPDATE_DISMISS_KEY, latest); } catch { /* ignore */ }
+    els.updateToast.hidden = true;
+    reserveToastSpace();
+    toast('次に新しいバージョンが出たときにまたお知らせします。下の「アップデート」からいつでも更新できます。');
+  });
 
   function render(status) {
     lastStatus = status;
     if (restarting && status.started > restartAt) {
       restarting = false;
+      els.updateToast.hidden = true;
       toast(`アップデートが完了しました（${status.version}）`, 'ok');
     }
     renderChecks(status.tailscale);
@@ -734,24 +811,7 @@
     }
   });
 
-  els.updateApplyBtn.addEventListener('click', async () => {
-    const update = (lastStatus && lastStatus.update) || {};
-    const what = update.method === 'git' ? '最新の変更' : `バージョン ${update.latest}`;
-    if (!window.confirm(`${what} を適用して ClipBridge を再起動します。iPhone との接続は数秒間切れますが、設定は引き継がれます。続けますか？`)) return;
-    updateBusy = true;
-    if (lastStatus) renderUpdate(lastStatus);
-    try {
-      const result = await adminPost('update/apply');
-      restarting = true;
-      restartAt = Date.now() / 1000;
-      toast(result.message);
-    } catch (error) {
-      toast(error.message, 'error');
-    } finally {
-      updateBusy = false;
-      if (lastStatus) renderUpdate(lastStatus);
-    }
-  });
+  els.updateApplyBtn.addEventListener('click', applyUpdate);
 
   poll();
   pollTimer = setInterval(poll, 2000);

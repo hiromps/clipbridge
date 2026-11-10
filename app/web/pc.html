@@ -15,6 +15,19 @@
     <div id="serverPill" class="pill ok">サーバー稼働中</div>
   </header>
 
+  <div id="updateToast" class="update-toast" role="status" aria-live="polite" hidden>
+    <span class="update-toast-icon" aria-hidden="true">⬆</span>
+    <div class="update-toast-text">
+      <strong id="updateToastTitle">新しいバージョンがあります</strong>
+      <span id="updateToastDetail" class="meta"></span>
+    </div>
+    <div class="update-toast-actions">
+      <button id="updateToastApply" class="btn primary" type="button">アップデートして再起動</button>
+      <a id="updateToastLink" class="btn" href="https://github.com/hiromps/clipbridge/releases" target="_blank" rel="noopener noreferrer" hidden>配布ページを開く ↗</a>
+      <button id="updateToastLater" class="btn ghost" type="button">あとで</button>
+    </div>
+  </div>
+
   <main>
     <section class="card" aria-labelledby="clipTitle">
       <div class="card-head">

@@ -767,7 +767,13 @@ def test_pair_from_hub_origin(app):
 
 def test_health_includes_pc_name(app):
     _, _, body = request(app.base, "/api/health")
-    assert as_json(body)["pc_name"] == app.pc_name
+    health = as_json(body)
+    assert health["pc_name"] == app.pc_name
+    assert health["update_available"] is False and health["latest_version"] is None
+    # PC 側に更新があると iPhone 側にも伝わる（更新の適用は PC 画面で行う）
+    app.updater.info = {**app.updater.info, "available": True, "latest": "9.9.9", "checked_at": time.time()}
+    health = as_json(request(app.base, "/api/health")[2])
+    assert health["update_available"] is True and health["latest_version"] == "9.9.9"
 
 
 def test_tailnet_peers_filters_offline_and_phones():

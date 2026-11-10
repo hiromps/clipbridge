@@ -58,6 +58,7 @@
     a2hs: $('a2hs'),
     pcName: $('pcName'),
     unpairBtn: $('unpairBtn'),
+    updateNotice: $('updateNotice'),
     addFromSettingsBtn: $('addFromSettingsBtn'),
     peerList: $('peerList'),
     peersRefreshBtn: $('peersRefreshBtn'),
@@ -1166,7 +1167,7 @@
       // EventSource からは 401 を判別できないため、通常の API で確認する
       try { await api('/api/clip', {}, pc); } catch { /* 解除済み or 一時的な切断（オフライン表示は api 側） */ }
     });
-    // PC 名と Pro の状態を取り直す（Pro はライセンス適用で変わる）
+    // PC 名と Pro の状態、PC 側の更新の有無を取り直す（Pro はライセンス適用で変わる）
     fetchHealth(pc.origin).then((data) => {
       if (!data) return;
       const updated = upsertPc({ origin: pc.origin, name: data.pc_name || pc.name || '', pro: !!data.pro });
@@ -1175,9 +1176,24 @@
         active = updated; // 使用中の PC の表示名・Pro 状態も更新する
         showMainLabels();
         renderHistoryState();
+        renderUpdateNotice(pc, data);
         if (becamePro || (data.pro && !els.historyList.children.length)) loadHistory(true);
       }
     });
+  }
+
+  // PC 側に新しいバージョンがあるときの案内（更新そのものは PC の画面で行う）
+  const noticedUpdates = new Set();
+  function renderUpdateNotice(pc, health) {
+    const latest = health.update_available ? (health.latest_version || '') : '';
+    els.updateNotice.hidden = !latest;
+    if (!latest) return;
+    els.updateNotice.textContent = `${displayName(pc)} の ClipBridge に新しいバージョン${latest && !latest.includes(' ') ? ` ${latest}` : ''}があります。PC のセットアップ画面に出ているお知らせから更新できます。`;
+    const key = pc.origin + '|' + latest;
+    if (!noticedUpdates.has(key)) {
+      noticedUpdates.add(key);
+      toast(`${displayName(pc)} に新しいバージョンがあります。PC の画面から更新してください。`);
+    }
   }
 
   function showMainLabels() {
