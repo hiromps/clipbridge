@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /updates/
+Disallow: /downloads/
+
+Sitemap: https://clipbridge-ashen.vercel.app/sitemap.xml
