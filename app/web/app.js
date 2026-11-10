@@ -138,11 +138,15 @@
   const pairResult = url.searchParams.get('pair');
   const ONBOARDING_KEY = 'clipbridge.onboarding';          // 次に開いたとき初回セットアップを出す PC の origin
   const onboardedKey = (origin) => 'clipbridge.onboarded:' + origin;
+  let pendingOnboarding = null;                            // localStorage が使えない環境でも、このページ表示中は覚えておく
   if (tokenFromUrl) {
     const known = pcs.some((pc) => pc.origin === location.origin);
     upsertPc({ origin: location.origin, token: tokenFromUrl, name: (pcs.find((pc) => pc.origin === location.origin) || {}).name || '' });
     storage.set(ACTIVE_KEY, location.origin);
-    if (!known) storage.set(ONBOARDING_KEY, location.origin); // QR リンクでの初回接続
+    if (!known) { // QR リンク / コード入力での初回接続
+      storage.set(ONBOARDING_KEY, location.origin);
+      pendingOnboarding = location.origin;
+    }
   }
   if (tokenFromUrl || pairResult) history.replaceState(null, '', '/');
 
@@ -1403,7 +1407,7 @@
     } else {
       showPair('このリンクは使えなくなっています。PC の画面に表示されている最新のコードを入力してください。');
     }
-  } else if (active && storage.get(ONBOARDING_KEY) === active.origin && !storage.get(onboardedKey(active.origin))) {
+  } else if (active && (pendingOnboarding === active.origin || storage.get(ONBOARDING_KEY) === active.origin) && !storage.get(onboardedKey(active.origin))) {
     showOnboarding(); // ペアリング直後: 初回セットアップから始める（SSE はつないだまま）
     refresh();
   } else if (active) {
