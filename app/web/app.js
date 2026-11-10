@@ -58,6 +58,21 @@
     a2hs: $('a2hs'),
     pcName: $('pcName'),
     unpairBtn: $('unpairBtn'),
+    updateNotice: $('updateNotice'),
+    guideBtn: $('guideBtn'),
+    onboardView: $('onboardView'),
+    onboardEyebrow: $('onboardEyebrow'),
+    onboardTitle: $('onboardTitle'),
+    onboardLead: $('onboardLead'),
+    onboardDots: $('onboardDots'),
+    onboardBack: $('onboardBack'),
+    onboardNext: $('onboardNext'),
+    onboardSkip: $('onboardSkip'),
+    shortcutAddBtn: $('shortcutAddBtn'),
+    shortcutUrlText: $('shortcutUrlText'),
+    shortcutTokenText: $('shortcutTokenText'),
+    shortcutTokenReveal: $('shortcutTokenReveal'),
+    shortcutTestMsg: $('shortcutTestMsg'),
     addFromSettingsBtn: $('addFromSettingsBtn'),
     peerList: $('peerList'),
     peersRefreshBtn: $('peersRefreshBtn'),
@@ -121,9 +136,13 @@
   const url = new URL(location.href);
   const tokenFromUrl = url.searchParams.get('t');
   const pairResult = url.searchParams.get('pair');
+  const ONBOARDING_KEY = 'clipbridge.onboarding';          // 次に開いたとき初回セットアップを出す PC の origin
+  const onboardedKey = (origin) => 'clipbridge.onboarded:' + origin;
   if (tokenFromUrl) {
+    const known = pcs.some((pc) => pc.origin === location.origin);
     upsertPc({ origin: location.origin, token: tokenFromUrl, name: (pcs.find((pc) => pc.origin === location.origin) || {}).name || '' });
     storage.set(ACTIVE_KEY, location.origin);
+    if (!known) storage.set(ONBOARDING_KEY, location.origin); // QR リンクでの初回接続
   }
   if (tokenFromUrl || pairResult) history.replaceState(null, '', '/');
 
@@ -182,6 +201,7 @@
     closeMenu();
     els.mainView.hidden = true;
     els.addView.hidden = true;
+    els.onboardView.hidden = true;
     els.pairView.hidden = false;
     els.pcSwitch.hidden = true;
     els.conn.hidden = false;
@@ -194,6 +214,7 @@
   function showMain() {
     els.pairView.hidden = true;
     els.addView.hidden = true;
+    els.onboardView.hidden = true;
     els.mainView.hidden = false;
     els.conn.hidden = true;
     els.pcSwitch.hidden = false;
@@ -315,6 +336,7 @@
       const data = await pairWith(location.origin, code);
       upsertPc({ origin: location.origin, name: data.pc_name || '', token: data.token });
       storage.set(ACTIVE_KEY, location.origin);
+      storage.set(ONBOARDING_KEY, location.origin); // 読み直したあとに初回セットアップを出す
       // トークン付き URL で読み直し、manifest（ホーム画面追加用）にもトークンを反映させる
       location.replace('/?t=' + encodeURIComponent(data.token));
     } catch (error) {
@@ -415,6 +437,7 @@
     disconnect();
     els.mainView.hidden = true;
     els.pairView.hidden = true;
+    els.onboardView.hidden = true;
     els.addView.hidden = false;
     els.addForm.hidden = true;
     addTarget = null;
@@ -544,6 +567,7 @@
       const pc = upsertPc({ origin: addTarget.origin, name: data.pc_name || addTarget.name, token: data.token });
       toast(`${displayName(pc)} を追加しました`);
       switchTo(pc.origin);
+      showOnboarding(); // 追加した PC 用のショートカット設定を案内する
     } catch (error) {
       els.addMsg.textContent = error instanceof TypeError
         ? `${addTarget.name} に接続できません。その PC で ClipBridge が起動しているか、Tailscale がオンか確認してください。`
@@ -1158,7 +1182,11 @@
     eventSource = new EventSource(pc.origin + '/api/events?t=' + encodeURIComponent(pc.token));
     eventSource.addEventListener('open', () => setConn('ok', '接続中', pc));
     eventSource.addEventListener('clip', (event) => {
-      try { render(JSON.parse(event.data)); } catch { /* ignore */ }
+      try {
+        const data = JSON.parse(event.data);
+        render(data);
+        noteShortcutArrival(data);
+      } catch { /* ignore */ }
       scheduleHistoryRefresh();
     });
     eventSource.addEventListener('error', async () => {
@@ -1166,18 +1194,33 @@
       // EventSource からは 401 を判別できないため、通常の API で確認する
       try { await api('/api/clip', {}, pc); } catch { /* 解除済み or 一時的な切断（オフライン表示は api 側） */ }
     });
-    // PC 名と Pro の状態を取り直す（Pro はライセンス適用で変わる）
+    // PC 名と Pro の状態、PC 側の更新の有無を取り直す（Pro はライセンス適用で変わる）
     fetchHealth(pc.origin).then((data) => {
       if (!data) return;
-      const updated = upsertPc({ origin: pc.origin, name: data.pc_name || pc.name || '', pro: !!data.pro });
+      const updated = upsertPc({ origin: pc.origin, name: data.pc_name || pc.name || '', pro: !!data.pro, shortcut_url: data.shortcut_url || pc.shortcut_url || '' });
       if (active && active.origin === pc.origin) {
         const becamePro = !!data.pro && !pc.pro;
         active = updated; // 使用中の PC の表示名・Pro 状態も更新する
         showMainLabels();
         renderHistoryState();
+        renderUpdateNotice(pc, data);
         if (becamePro || (data.pro && !els.historyList.children.length)) loadHistory(true);
       }
     });
+  }
+
+  // PC 側に新しいバージョンがあるときの案内（更新そのものは PC の画面で行う）
+  const noticedUpdates = new Set();
+  function renderUpdateNotice(pc, health) {
+    const latest = health.update_available ? (health.latest_version || '') : '';
+    els.updateNotice.hidden = !latest;
+    if (!latest) return;
+    els.updateNotice.textContent = `${displayName(pc)} の ClipBridge に新しいバージョン${latest && !latest.includes(' ') ? ` ${latest}` : ''}があります。PC のセットアップ画面に出ているお知らせから更新できます。`;
+    const key = pc.origin + '|' + latest;
+    if (!noticedUpdates.has(key)) {
+      noticedUpdates.add(key);
+      toast(`${displayName(pc)} に新しいバージョンがあります。PC の画面から更新してください。`);
+    }
   }
 
   function showMainLabels() {
@@ -1205,6 +1248,140 @@
   });
   window.addEventListener('pageshow', (event) => { if (event.persisted && active && !els.mainView.hidden) { disconnect(); refresh(); connect(); } });
 
+  // ---- 初回セットアップ（ペアリング直後のウィザード） ----------------------------------
+  const DEFAULT_SHORTCUT_URL = 'https://www.icloud.com/shortcuts/36c11823bdb7479b9fb2c47e0c917beb';
+  let onboardSteps = [];
+  let onboardIndex = 0;
+  let onboardPc = null;
+
+  function onboardStepList() {
+    const steps = ['welcome'];
+    if (isIOS && !standalone) steps.push('home');
+    steps.push('shortcut', 'done');
+    return steps;
+  }
+
+  function renderOnboardStep() {
+    const step = onboardSteps[onboardIndex];
+    for (const card of els.onboardView.querySelectorAll('.onboard-step')) card.hidden = card.dataset.step !== step;
+    els.onboardDots.innerHTML = '';
+    onboardSteps.forEach((_, index) => {
+      const dot = document.createElement('li');
+      dot.className = index === onboardIndex ? 'on' : (index < onboardIndex ? 'done' : '');
+      els.onboardDots.appendChild(dot);
+    });
+    const name = displayName(onboardPc);
+    const titles = {
+      welcome: ['接続できました', `${name} とつながりました。使い方を 1 分で確認しましょう。`],
+      home: ['ホーム画面に追加', 'アプリのように開けるようにします。'],
+      shortcut: ['ショートカットを設定', `iPhone でコピーした文字を、画面を開かずに ${name} へ送れるようにします。`],
+      done: ['準備ができました', 'いつでも「接続」カードの「セットアップガイド」から見直せます。'],
+    };
+    const [title, lead] = titles[step];
+    els.onboardTitle.textContent = title;
+    els.onboardLead.textContent = lead;
+    els.onboardEyebrow.textContent = `セットアップ ${onboardIndex + 1} / ${onboardSteps.length}`;
+    els.onboardBack.hidden = onboardIndex === 0;
+    els.onboardNext.textContent = onboardIndex === onboardSteps.length - 1 ? '使い始める' : '次へ';
+    els.onboardSkip.hidden = onboardIndex === onboardSteps.length - 1;
+    if (step === 'shortcut') {
+      els.shortcutAddBtn.href = onboardPc.shortcut_url || DEFAULT_SHORTCUT_URL;
+      els.shortcutUrlText.textContent = onboardPc.origin + '/api/clip';
+      els.shortcutTokenText.dataset.masked = '1';
+      els.shortcutTokenText.textContent = '••••••••••••';
+      els.shortcutTokenReveal.textContent = '表示';
+      const ok = storage.get('clipbridge.shortcutOk:' + onboardPc.origin);
+      els.shortcutTestMsg.textContent = ok ? `✅ ショートカットから届いています（${ok}）` : 'まだ届いていません';
+      els.shortcutTestMsg.className = 'msg ' + (ok ? 'ok' : '');
+    }
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }
+
+  function showOnboarding(force = false) {
+    if (!active) return;
+    if (!force && storage.get(onboardedKey(active.origin))) return;
+    onboardPc = active;
+    onboardSteps = onboardStepList();
+    onboardIndex = 0;
+    closeMenu();
+    els.mainView.hidden = true;
+    els.pairView.hidden = true;
+    els.addView.hidden = true;
+    els.onboardView.hidden = false;
+    els.conn.hidden = true;
+    els.pcSwitch.hidden = false;
+    els.pcSwitchName.textContent = displayName(active);
+    connect(); // SSE をつないだままにして、ショートカットからの到着を検知する
+    renderOnboardStep();
+  }
+
+  function finishOnboarding() {
+    if (onboardPc) storage.set(onboardedKey(onboardPc.origin), new Date().toISOString());
+    storage.remove(ONBOARDING_KEY);
+    showMain();
+    refresh();
+  }
+
+  els.onboardNext.addEventListener('click', () => {
+    if (onboardIndex >= onboardSteps.length - 1) { finishOnboarding(); return; }
+    onboardIndex += 1;
+    renderOnboardStep();
+  });
+  els.onboardBack.addEventListener('click', () => { if (onboardIndex > 0) { onboardIndex -= 1; renderOnboardStep(); } });
+  els.onboardSkip.addEventListener('click', finishOnboarding);
+  els.guideBtn.addEventListener('click', () => showOnboarding(true));
+
+  els.shortcutTokenReveal.addEventListener('click', () => {
+    const masked = els.shortcutTokenText.dataset.masked === '1';
+    els.shortcutTokenText.dataset.masked = masked ? '0' : '1';
+    els.shortcutTokenText.textContent = masked ? (onboardPc ? onboardPc.token : '') : '••••••••••••';
+    els.shortcutTokenReveal.textContent = masked ? '隠す' : '表示';
+  });
+
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; }
+    } catch { /* フォールバックへ */ }
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    area.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { ok = false; }
+    area.remove();
+    return ok;
+  }
+
+  for (const button of els.onboardView.querySelectorAll('[data-copy]')) {
+    button.addEventListener('click', async () => {
+      const id = button.dataset.copy;
+      const value = id === 'shortcutTokenText' ? (onboardPc ? onboardPc.token : '') : els[id].textContent;
+      const label = id === 'shortcutTokenText' ? 'X-Token の値' : 'URL';
+      if (await copyText(value)) { vibrate(); toast(`${label}をコピーしました。ショートカットに貼り付けてください。`); }
+      else toast('コピーできませんでした。値を長押しして選択してください。', 'error');
+    });
+  }
+
+  function noteShortcutArrival(data) {
+    // ショートカット（URL の内容を取得）経由で届いたら、セットアップの確認を完了にする
+    if (!data || data.source !== 'phone' || data.via !== 'shortcut' || !active) return;
+    const stamp = new Date(data.updated * 1000);
+    const label = `${String(stamp.getHours()).padStart(2, '0')}:${String(stamp.getMinutes()).padStart(2, '0')} に ${data.length.toLocaleString()} 文字`;
+    const first = !storage.get('clipbridge.shortcutOk:' + active.origin);
+    storage.set('clipbridge.shortcutOk:' + active.origin, label);
+    if (!els.onboardView.hidden && onboardSteps[onboardIndex] === 'shortcut') {
+      els.shortcutTestMsg.textContent = `✅ ショートカットから届きました（${label}）`;
+      els.shortcutTestMsg.className = 'msg ok';
+      vibrate();
+    } else if (first) {
+      toast('ショートカットからの送信を確認しました');
+    }
+  }
+
   // ---- 解除 ----------------------------------------------------------------------
   els.unpairBtn.addEventListener('click', () => {
     if (!active) return;
@@ -1226,7 +1403,11 @@
     } else {
       showPair('このリンクは使えなくなっています。PC の画面に表示されている最新のコードを入力してください。');
     }
+  } else if (active && storage.get(ONBOARDING_KEY) === active.origin && !storage.get(onboardedKey(active.origin))) {
+    showOnboarding(); // ペアリング直後: 初回セットアップから始める（SSE はつないだまま）
+    refresh();
   } else if (active) {
+    storage.remove(ONBOARDING_KEY);
     showMain();
     refresh();
   } else {

@@ -52,7 +52,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-__version__ = "2.4.0"
+__version__ = "2.5.0"
 APP_NAME = "ClipBridge"
 FROZEN = bool(getattr(sys, "frozen", False))  # PyInstaller でビルドした exe 版か
 ROOT = Path(__file__).resolve().parent
@@ -79,6 +79,8 @@ REPO_URL = f"https://github.com/{REPO}"
 RELEASES_URL = f"{REPO_URL}/releases"
 UPDATE_URL = f"{REPO_URL}/releases/latest/download/windows.json"
 SITE_URL = "https://clipbridge-ashen.vercel.app/"
+# iPhone 用ショートカット（コピーした文字をアプリを開かずに PC へ送る）。iPhone 側の初回セットアップで案内する
+SHORTCUT_URL = "https://www.icloud.com/shortcuts/36c11823bdb7479b9fb2c47e0c917beb"
 UPDATE_CHECK_DELAY = 10.0
 UPDATE_CHECK_INTERVAL = 6 * 3600.0
 MAX_UPDATE_BYTES = 100 * 1024 * 1024
@@ -1055,6 +1057,7 @@ class ClipState:
         self.updated = time.time()
         self.source = "pc"
         self.image: dict | None = None  # kind == "image" のときのメタ情報（id / size / width / height / type）
+        self.via: str | None = None  # iPhone からの経路: app（画面）/ shortcut（ショートカット）
         self._subscribers: set[queue.Queue] = set()
 
     def _payload(self) -> dict:
@@ -1066,13 +1069,14 @@ class ClipState:
             "source": self.source,
             "length": len(self.text),
             "image": self.image,
+            "via": self.via,
         }
 
     def snapshot(self) -> dict:
         with self._lock:
             return self._payload()
 
-    def set(self, text: str, kind: str, source: str, image: dict | None = None) -> bool:
+    def set(self, text: str, kind: str, source: str, image: dict | None = None, via: str | None = None) -> bool:
         """内容が変わったときだけ更新して購読者へ配信する。"""
         with self._lock:
             image = image if kind == "image" else None
@@ -1080,6 +1084,7 @@ class ClipState:
             if new_hash == self.hash and kind == self.kind:
                 return False
             self.text, self.kind, self.hash, self.image = text, kind, new_hash, image
+            self.via = via if source == "phone" else None
             self.updated, self.source = time.time(), source
             payload = self._payload()
             subscribers = list(self._subscribers)
@@ -1476,6 +1481,8 @@ def save_config(path: Path, data: dict) -> None:
 
 
 def device_name(user_agent: str) -> str:
+    if "Shortcuts" in user_agent:
+        return "iPhone（ショートカット）"
     if "iPad" in user_agent:
         return "iPad"
     if "iPhone" in user_agent:
@@ -2213,14 +2220,14 @@ class ClipBridgeApp:
                 pass
             time.sleep(self.watch_interval)
 
-    def write_clipboard(self, text: str, source: str = "phone") -> dict:
-        """テキストを PC のクリップボードに入れる。source は phone（iPhone から）か pc（PC 画面から）。"""
+    def write_clipboard(self, text: str, source: str = "phone", via: str | None = None) -> dict:
+        """テキストを PC のクリップボードに入れる。source は phone（iPhone から）か pc（PC 画面から）、via は app / shortcut。"""
         with self._clip_lock:
             self.clipboard.write(text)
             self._own_sequence = self.clipboard.sequence()
         normalized = normalize_newlines(text)
         self._store_image(None)
-        self.state.set(normalized, "text" if normalized else "empty", source)
+        self.state.set(normalized, "text" if normalized else "empty", source, via=via)
         self._cycle_index = 0
         self.record_text(normalized, source)
         return self.state.snapshot()
@@ -2736,7 +2743,13 @@ def make_handler(app: ClipBridgeApp):
                 # iOS Safari が慣例的に探しに来るサイズ違いのアイコン名をまとめて返す
                 return self._file("icon-180.png", "image/png")
             if path == "/api/health":
-                return self._json(200, {"ok": True, "app": APP_NAME, "version": __version__, "pc_name": app.pc_name, "pro": app.pro})
+                update = app.updater.info
+                return self._json(200, {
+                    "ok": True, "app": APP_NAME, "version": __version__, "pc_name": app.pc_name, "pro": app.pro,
+                    "update_available": bool(update.get("available")),
+                    "latest_version": update.get("latest") if update.get("available") else None,
+                    "shortcut_url": SHORTCUT_URL,
+                })
             if path.startswith("/api/history"):
                 return self._history_get(path, query)
             if path.startswith("/pc/api/history"):
@@ -2954,7 +2967,9 @@ def make_handler(app: ClipBridgeApp):
             except UnicodeDecodeError:
                 return self._error(400, "bad_encoding", "UTF-8 のテキストが必要です")
             try:
-                snapshot = app.write_clipboard(text)
+                # ショートカット（「URL の内容を取得」）からの送信は User-Agent が Shortcuts/… になる
+                via = "shortcut" if "Shortcuts" in (self.headers.get("User-Agent") or "") else "app"
+                snapshot = app.write_clipboard(text, via=via)
             except Exception as exc:  # noqa: BLE001 - 内容は出さない
                 app.log(f"clipboard write failed: {type(exc).__name__}")
                 return self._error(500, "clipboard", "PC のクリップボードへ書き込めませんでした")

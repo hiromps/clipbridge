@@ -491,7 +491,34 @@ def test_summarize_tailscale_states():
     assert summary["ready"] is True and summary["public_url"] == f"https://{DNS}/"
 
 
+def test_shortcut_posts_are_marked_and_health_advertises_the_shortcut(app):
+    """iPhone のショートカット（URL の内容を取得）からの送信は via=shortcut になり、端末一覧でも区別できる。"""
+    health = as_json(request(app.base, "/api/health")[2])
+    assert health["shortcut_url"].startswith("https://www.icloud.com/shortcuts/")
+    conn = http.client.HTTPConnection("127.0.0.1", app.port, timeout=5)
+    conn.request("GET", f"/api/events?t={app.token}")
+    response = conn.getresponse()
+    read_sse_event(response)
+    status, _, _ = request(
+        app.base, "/api/clip", method="POST", token=app.token, data="ショートカットから".encode("utf-8"),
+        headers={"User-Agent": "Shortcuts/2607 CFNetwork/1568.100.1 Darwin/24.0.0"},
+    )
+    assert status == 200
+    _, event = read_sse_event(response)
+    assert event["source"] == "phone" and event["via"] == "shortcut" and event["text"] == "ショートカットから"
+    # 画面からの送信は via=app、PC でコピーしたら via は付かない
+    request(app.base, "/api/clip", method="POST", token=app.token, data=b"from app", headers={"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"})
+    _, event = read_sse_event(response)
+    assert event["via"] == "app"
+    app.fake_clipboard.external_copy("pc copy")
+    _, event = read_sse_event(response)
+    conn.close()
+    assert event["source"] == "pc" and event["via"] is None
+    assert any(device["name"] == "iPhone（ショートカット）" for device in app.device_list())
+
+
 def test_device_name():
+    assert server.device_name("Shortcuts/2607 CFNetwork/1568.100.1 Darwin/24.0.0") == "iPhone（ショートカット）"
     assert server.device_name("Mozilla/5.0 (iPhone; CPU iPhone OS 16_7 like Mac OS X)") == "iPhone"
     assert server.device_name("Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)") == "iPad"
     assert server.device_name("Mozilla/5.0 (Windows NT 10.0; Win64; x64)") == "Windows PC"
@@ -767,7 +794,13 @@ def test_pair_from_hub_origin(app):
 
 def test_health_includes_pc_name(app):
     _, _, body = request(app.base, "/api/health")
-    assert as_json(body)["pc_name"] == app.pc_name
+    health = as_json(body)
+    assert health["pc_name"] == app.pc_name
+    assert health["update_available"] is False and health["latest_version"] is None
+    # PC 側に更新があると iPhone 側にも伝わる（更新の適用は PC 画面で行う）
+    app.updater.info = {**app.updater.info, "available": True, "latest": "9.9.9", "checked_at": time.time()}
+    health = as_json(request(app.base, "/api/health")[2])
+    assert health["update_available"] is True and health["latest_version"] == "9.9.9"
 
 
 def test_tailnet_peers_filters_offline_and_phones():

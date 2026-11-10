@@ -15,6 +15,19 @@
     <div id="serverPill" class="pill ok">サーバー稼働中</div>
   </header>
 
+  <div id="updateToast" class="update-toast" role="status" aria-live="polite" hidden>
+    <span class="update-toast-icon" aria-hidden="true">⬆</span>
+    <div class="update-toast-text">
+      <strong id="updateToastTitle">新しいバージョンがあります</strong>
+      <span id="updateToastDetail" class="meta"></span>
+    </div>
+    <div class="update-toast-actions">
+      <button id="updateToastApply" class="btn primary" type="button">アップデートして再起動</button>
+      <a id="updateToastLink" class="btn" href="https://github.com/hiromps/clipbridge/releases" target="_blank" rel="noopener noreferrer" hidden>配布ページを開く ↗</a>
+      <button id="updateToastLater" class="btn ghost" type="button">あとで</button>
+    </div>
+  </div>
+
   <main>
     <section class="card" aria-labelledby="clipTitle">
       <div class="card-head">
@@ -70,6 +83,7 @@
         <li>以後はホーム画面の ClipBridge を開くだけ（接続設定は引き継がれます）</li>
       </ol>
       <p class="hint">使い方: PC で Ctrl+C すると iPhone の画面に表示され「iPhone にコピー」で取り込めます。iPhone でコピーした文字は「PC へ送る」で PC のクリップボードに入ります。</p>
+      <p class="hint">接続直後に iPhone 側で「初回セットアップ」が開き、ホーム画面への追加と、アプリを開かずに PC へ送るショートカット（背面タップ・共有シート対応）を案内します。あとから見るには iPhone の「接続」カード →「セットアップガイド」。</p>
     </section>
 
     <section class="card" aria-labelledby="imagesTitle">
