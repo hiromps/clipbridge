@@ -16,6 +16,10 @@
   - PC 用の管理画面 /pc は「ループバックから直接」来たリクエストにだけ応答する
   - ペアリングは 6 桁コード（QR にも埋め込む）。成功または 5 回失敗でコードを更新する
   - PC のクリップボード変化は SSE (/api/events) で iPhone にプッシュする
+  - 画像（iPhone → PC）: POST /api/image で届いた画像を GDI+ でビットマップにして PC のクリップボードに入れる
+    （Ctrl+V で貼り付けできる）。?save=1 なら「ピクチャ\\ClipBridge」にも保存する。形式は中身で判定する
+  - 画像（PC → iPhone）: PC のクリップボードが画像になったら PNG にして保持し、SSE でメタ情報を配る。
+    iPhone は GET /api/image で本体を取り、表示・コピー・写真への保存ができる
   - 複数 PC: iPhone は 1 台目の PC の画面（ハブ）から他の PC の API を直接呼ぶ。そのため /api/* は
     同じ tailnet のオリジンからのクロスオリジン呼び出し（CORS）を許し、/api/peers で他の PC を探せる
   - クリップボードの中身・トークン・コードはログに出さない
@@ -35,6 +39,7 @@ import re
 import secrets
 import shutil
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -46,7 +51,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 APP_NAME = "ClipBridge"
 FROZEN = bool(getattr(sys, "frozen", False))  # PyInstaller でビルドした exe 版か
 ROOT = Path(__file__).resolve().parent
@@ -60,6 +65,7 @@ VERSIONS_DIR = DATA_DIR / "versions"
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8787
 MAX_BYTES = 1024 * 1024
+MAX_IMAGE_BYTES = 30 * 1024 * 1024  # iPhone の写真（HEIC → JPEG 変換後で数 MB）に十分な上限
 HTTPS_PORTS = (443, 8443, 8444, 8445)
 PAIR_MAX_ATTEMPTS = 5
 WATCH_INTERVAL = 0.5
@@ -100,16 +106,25 @@ class WindowsClipboard:
     """Win32 API を ctypes で直接呼ぶ（追加パッケージ不要）。"""
 
     name = "windows"
+    CF_BITMAP = 2
+    CF_DIB = 8
     CF_UNICODETEXT = 13
     GMEM_MOVEABLE = 0x0002
+    PROPERTY_TAG_ORIENTATION = 0x0112
 
     def __init__(self) -> None:
         import ctypes
         from ctypes import wintypes
 
         self._ctypes = ctypes
+        self._wintypes = wintypes
+        self._gdiplus = None
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
+        gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+        gdi32.DeleteObject.restype = wintypes.BOOL
+        self._gdi32 = gdi32
         user32.OpenClipboard.argtypes = [wintypes.HWND]
         user32.OpenClipboard.restype = wintypes.BOOL
         user32.CloseClipboard.restype = wintypes.BOOL
@@ -130,6 +145,8 @@ class WindowsClipboard:
         kernel32.GlobalUnlock.restype = wintypes.BOOL
         kernel32.GlobalFree.argtypes = [wintypes.HGLOBAL]
         kernel32.GlobalFree.restype = wintypes.HGLOBAL
+        kernel32.GlobalSize.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalSize.restype = ctypes.c_size_t
         self._user32 = user32
         self._kernel32 = kernel32
 
@@ -145,11 +162,16 @@ class WindowsClipboard:
         raise ClipboardError("クリップボードが他のアプリに使用中です")
 
     def read(self) -> tuple[str, str]:
-        """(テキスト, 種別) を返す。種別は text / empty / other（画像など）。"""
+        """(テキスト, 種別) を返す。種別は text / empty / image / other（ファイルなど）。"""
         self._open()
         try:
             if not self._user32.IsClipboardFormatAvailable(self.CF_UNICODETEXT):
-                kind = "empty" if self._user32.CountClipboardFormats() == 0 else "other"
+                if self._user32.CountClipboardFormats() == 0:
+                    kind = "empty"
+                elif self._user32.IsClipboardFormatAvailable(self.CF_DIB) or self._user32.IsClipboardFormatAvailable(self.CF_BITMAP):
+                    kind = "image"
+                else:
+                    kind = "other"
                 return "", kind
             handle = self._user32.GetClipboardData(self.CF_UNICODETEXT)
             if not handle:
@@ -186,6 +208,177 @@ class WindowsClipboard:
         finally:
             self._user32.CloseClipboard()
 
+    # --- 画像（GDI+ を ctypes で直接呼ぶ。追加パッケージ不要） ---------------------
+    def _gdip(self):
+        """GDI+ を初回だけ起動して関数の型を設定する。終了処理はプロセス終了に任せる。"""
+        if self._gdiplus is not None:
+            return self._gdiplus
+        ctypes, wintypes = self._ctypes, self._wintypes
+
+        class StartupInput(ctypes.Structure):
+            _fields_ = [
+                ("GdiplusVersion", ctypes.c_uint32),
+                ("DebugEventCallback", ctypes.c_void_p),
+                ("SuppressBackgroundThread", wintypes.BOOL),
+                ("SuppressExternalCodecs", wintypes.BOOL),
+            ]
+
+        class GUID(ctypes.Structure):
+            _fields_ = [("Data1", ctypes.c_uint32), ("Data2", ctypes.c_uint16), ("Data3", ctypes.c_uint16), ("Data4", ctypes.c_ubyte * 8)]
+
+        gdiplus = ctypes.WinDLL("gdiplus", use_last_error=True)
+        gdiplus.GdiplusStartup.argtypes = [ctypes.POINTER(ctypes.c_size_t), ctypes.POINTER(StartupInput), ctypes.c_void_p]
+        gdiplus.GdiplusStartup.restype = ctypes.c_int
+        gdiplus.GdipCreateBitmapFromFile.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_void_p)]
+        gdiplus.GdipCreateBitmapFromFile.restype = ctypes.c_int
+        gdiplus.GdipCreateBitmapFromHBITMAP.argtypes = [wintypes.HBITMAP, wintypes.HPALETTE, ctypes.POINTER(ctypes.c_void_p)]
+        gdiplus.GdipCreateBitmapFromHBITMAP.restype = ctypes.c_int
+        gdiplus.GdipCreateHBITMAPFromBitmap.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.HBITMAP), ctypes.c_uint32]
+        gdiplus.GdipCreateHBITMAPFromBitmap.restype = ctypes.c_int
+        gdiplus.GdipSaveImageToFile.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR, ctypes.POINTER(GUID), ctypes.c_void_p]
+        gdiplus.GdipSaveImageToFile.restype = ctypes.c_int
+        gdiplus.GdipDisposeImage.argtypes = [ctypes.c_void_p]
+        gdiplus.GdipDisposeImage.restype = ctypes.c_int
+        gdiplus.GdipGetPropertyItemSize.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.POINTER(ctypes.c_uint32)]
+        gdiplus.GdipGetPropertyItemSize.restype = ctypes.c_int
+        gdiplus.GdipGetPropertyItem.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p]
+        gdiplus.GdipGetPropertyItem.restype = ctypes.c_int
+        gdiplus.GdipImageRotateFlip.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        gdiplus.GdipImageRotateFlip.restype = ctypes.c_int
+        self._gdip_token = ctypes.c_size_t()
+        startup = StartupInput(1, None, False, False)
+        status = gdiplus.GdiplusStartup(ctypes.byref(self._gdip_token), ctypes.byref(startup), None)
+        if status != 0:
+            raise ClipboardError(f"画像ライブラリ (GDI+) を初期化できません ({status})")
+        # PNG エンコーダーの CLSID {557CF406-1A04-11D3-9A73-0000F81EF32E}
+        self._png_clsid = GUID(0x557CF406, 0x1A04, 0x11D3, (ctypes.c_ubyte * 8)(0x9A, 0x73, 0x00, 0x00, 0xF8, 0x1E, 0xF3, 0x2E))
+        self._user32.RegisterClipboardFormatW.argtypes = [wintypes.LPCWSTR]
+        self._user32.RegisterClipboardFormatW.restype = wintypes.UINT
+        self._png_format = int(self._user32.RegisterClipboardFormatW("PNG"))  # Chrome / GIMP などが使う PNG そのままの形式
+        self._gdiplus = gdiplus
+        return gdiplus
+
+    @staticmethod
+    def _temp_file(data: bytes | None, suffix: str) -> Path:
+        handle, name = tempfile.mkstemp(prefix="clipbridge-", suffix=suffix)
+        with os.fdopen(handle, "wb") as file:
+            if data:
+                file.write(data)
+        return Path(name)
+
+    def _global_copy(self, data: bytes):
+        """GMEM_MOVEABLE なグローバルメモリに data を複製する（クリップボードに渡すと所有権が移る）。"""
+        handle = self._kernel32.GlobalAlloc(self.GMEM_MOVEABLE, len(data))
+        if not handle:
+            raise ClipboardError("メモリを確保できません")
+        pointer = self._kernel32.GlobalLock(handle)
+        if not pointer:
+            self._kernel32.GlobalFree(handle)
+            raise ClipboardError("メモリをロックできません")
+        self._ctypes.memmove(pointer, data, len(data))
+        self._kernel32.GlobalUnlock(handle)
+        return handle
+
+    def _exif_orientation(self, gdiplus, bitmap) -> int:
+        """EXIF の Orientation（1〜8）。無ければ 1。iPhone の写真は回転情報だけで向きを表すことが多い。"""
+        ctypes = self._ctypes
+
+        class PropertyItem(ctypes.Structure):
+            _fields_ = [("id", ctypes.c_uint32), ("length", ctypes.c_uint32), ("type", ctypes.c_uint16), ("value", ctypes.c_void_p)]
+
+        size = ctypes.c_uint32()
+        if gdiplus.GdipGetPropertyItemSize(bitmap, self.PROPERTY_TAG_ORIENTATION, ctypes.byref(size)) != 0:
+            return 1
+        if size.value < ctypes.sizeof(PropertyItem):
+            return 1
+        buffer = ctypes.create_string_buffer(size.value)
+        if gdiplus.GdipGetPropertyItem(bitmap, self.PROPERTY_TAG_ORIENTATION, size.value, buffer) != 0:
+            return 1
+        item = PropertyItem.from_buffer(buffer)
+        if item.type != 3 or item.length < 2 or not item.value:  # 3 = PropertyTagTypeShort
+            return 1
+        value = ctypes.cast(item.value, ctypes.POINTER(ctypes.c_uint16))[0]
+        return value if 1 <= value <= 8 else 1
+
+    def write_image(self, data: bytes) -> None:
+        """画像（ファイルの中身）を CF_BITMAP としてクリップボードに入れる（CF_DIB は Windows が自動変換する）。
+
+        PNG のときは PNG 形式（透過を保てる）も併せて入れる。GDI+ はファイルからしか開けないので一時ファイルを経由する。
+        """
+        ctypes, wintypes = self._ctypes, self._wintypes
+        gdiplus = self._gdip()
+        path = self._temp_file(data, ".img")
+        bitmap = ctypes.c_void_p()
+        hbitmap = wintypes.HBITMAP()
+        try:
+            status = gdiplus.GdipCreateBitmapFromFile(str(path), ctypes.byref(bitmap))
+            if status != 0 or not bitmap:
+                raise ClipboardError(f"この形式の画像は Windows で開けません (GDI+ {status})")
+            flip = ROTATE_FLIP_FOR_EXIF.get(self._exif_orientation(gdiplus, bitmap), 0)
+            if flip:
+                gdiplus.GdipImageRotateFlip(bitmap, flip)
+            status = gdiplus.GdipCreateHBITMAPFromBitmap(bitmap, ctypes.byref(hbitmap), 0xFFFFFFFF)  # 透明部分は白
+            if status != 0 or not hbitmap:
+                raise ClipboardError(f"画像をビットマップに変換できません (GDI+ {status})")
+        finally:
+            if bitmap:
+                gdiplus.GdipDisposeImage(bitmap)
+            path.unlink(missing_ok=True)
+        png_handle = self._global_copy(data) if data.startswith(PNG_SIGNATURE) else None
+        self._open()
+        try:
+            if not self._user32.EmptyClipboard() or not self._user32.SetClipboardData(self.CF_BITMAP, hbitmap):
+                self._gdi32.DeleteObject(hbitmap)
+                if png_handle:
+                    self._kernel32.GlobalFree(png_handle)
+                raise ClipboardError("クリップボードへ書き込めません")
+            if png_handle and not self._user32.SetClipboardData(self._png_format, png_handle):
+                self._kernel32.GlobalFree(png_handle)  # ビットマップは入っているので続行
+        finally:
+            self._user32.CloseClipboard()
+
+    def read_image(self) -> bytes:
+        """クリップボードの画像を PNG のバイト列で返す。PNG 形式があればそのまま、なければビットマップを GDI+ で PNG にする。"""
+        ctypes = self._ctypes
+        gdiplus = self._gdip()
+        bitmap = ctypes.c_void_p()
+        self._open()
+        try:
+            if self._user32.IsClipboardFormatAvailable(self._png_format):
+                handle = self._user32.GetClipboardData(self._png_format)
+                pointer = self._kernel32.GlobalLock(handle) if handle else None
+                if pointer:
+                    try:
+                        data = ctypes.string_at(pointer, self._kernel32.GlobalSize(handle))
+                    finally:
+                        self._kernel32.GlobalUnlock(handle)
+                    if data.startswith(PNG_SIGNATURE):
+                        return data
+            if not self._user32.IsClipboardFormatAvailable(self.CF_BITMAP):
+                raise ClipboardError("クリップボードに画像がありません")
+            hbitmap = self._user32.GetClipboardData(self.CF_BITMAP)
+            if not hbitmap:
+                raise ClipboardError("クリップボードの画像を読み取れません")
+            status = gdiplus.GdipCreateBitmapFromHBITMAP(hbitmap, None, ctypes.byref(bitmap))  # 画素はここで複製される
+            if status != 0 or not bitmap:
+                raise ClipboardError(f"画像を読み取れません (GDI+ {status})")
+        finally:
+            self._user32.CloseClipboard()
+        path = self._temp_file(None, ".png")
+        try:
+            status = gdiplus.GdipSaveImageToFile(bitmap, str(path), ctypes.byref(self._png_clsid), None)
+            if status != 0:
+                raise ClipboardError(f"PNG に変換できません (GDI+ {status})")
+            return path.read_bytes()
+        finally:
+            gdiplus.GdipDisposeImage(bitmap)
+            path.unlink(missing_ok=True)
+
+
+# EXIF Orientation → GDI+ RotateFlipType（Rotate90FlipNone=1, Rotate180FlipNone=2, Rotate270FlipNone=3,
+# RotateNoneFlipX=4, Rotate90FlipX=5, Rotate180FlipX=6, Rotate270FlipX=7）
+ROTATE_FLIP_FOR_EXIF = {1: 0, 2: 4, 3: 2, 4: 6, 5: 5, 6: 1, 7: 7, 8: 3}
+
 
 class MemoryClipboard:
     """テストおよび Windows 以外の OS 用の仮クリップボード。"""
@@ -195,6 +388,7 @@ class MemoryClipboard:
     def __init__(self) -> None:
         self.text = ""
         self.kind = "empty"
+        self.image_data: bytes | None = None
         self._sequence = 0
 
     def sequence(self) -> int:
@@ -206,12 +400,32 @@ class MemoryClipboard:
     def write(self, text: str) -> None:
         self.text = text
         self.kind = "text" if text else "empty"
+        self.image_data = None
         self._sequence += 1
+
+    def write_image(self, data: bytes) -> None:
+        self.text = ""
+        self.kind = "image"
+        self.image_data = data
+        self._sequence += 1
+
+    def read_image(self) -> bytes:
+        if self.image_data is None:
+            raise ClipboardError("クリップボードに画像がありません")
+        return self.image_data
 
     def external_copy(self, text: str, kind: str = "text") -> None:
         """PC 側で Ctrl+C されたことを模倣する。"""
         self.text = text
         self.kind = kind
+        self.image_data = None
+        self._sequence += 1
+
+    def external_copy_image(self, data: bytes) -> None:
+        """PC 側で画像をコピー（スクリーンショットなど）したことを模倣する。"""
+        self.text = ""
+        self.kind = "image"
+        self.image_data = data
         self._sequence += 1
 
 
@@ -230,6 +444,129 @@ def text_hash(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 画像ファイル（iPhone → PC）
+# ---------------------------------------------------------------------------
+
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+IMAGE_SIGNATURES: tuple[tuple[bytes, str, str], ...] = (
+    (PNG_SIGNATURE, "png", "png"),
+    (b"\xff\xd8\xff", "jpeg", "jpg"),
+    (b"GIF87a", "gif", "gif"),
+    (b"GIF89a", "gif", "gif"),
+    (b"BM", "bmp", "bmp"),
+)
+HEIF_BRANDS = {b"heic", b"heix", b"hevc", b"hevx", b"heim", b"heis", b"mif1", b"msf1"}
+
+
+def sniff_image(data: bytes) -> tuple[str, str] | None:
+    """先頭バイトから画像形式を判定して (種別, 拡張子) を返す。Content-Type やファイル名は信用しない。"""
+    for signature, kind, ext in IMAGE_SIGNATURES:
+        if data.startswith(signature) and len(data) > 16:
+            return kind, ext
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp", "webp"
+    if len(data) > 12 and data[4:8] == b"ftyp":
+        brand = data[8:12]
+        if brand in HEIF_BRANDS:
+            return "heic", "heic"
+        if brand in (b"avif", b"avis"):
+            return "avif", "avif"
+    return None
+
+
+IMAGE_CONTENT_TYPES = {
+    "png": "image/png", "jpeg": "image/jpeg", "gif": "image/gif", "bmp": "image/bmp",
+    "webp": "image/webp", "heic": "image/heic", "avif": "image/avif",
+}
+
+
+def image_dimensions(data: bytes) -> tuple[int, int] | None:
+    """PNG / GIF / JPEG の幅と高さ（iPhone 側の表示用。取れなければ None）。"""
+    if data.startswith(PNG_SIGNATURE) and len(data) >= 24 and data[12:16] == b"IHDR":
+        return struct.unpack(">II", data[16:24])
+    if data[:6] in (b"GIF87a", b"GIF89a") and len(data) >= 10:
+        return struct.unpack("<HH", data[6:10])
+    if data.startswith(b"\xff\xd8"):
+        position = 2
+        while position + 9 < len(data):
+            if data[position] != 0xFF:
+                position += 1
+                continue
+            marker = data[position + 1]
+            if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+                position += 2
+                continue
+            length = struct.unpack(">H", data[position + 2:position + 4])[0]
+            if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                height, width = struct.unpack(">HH", data[position + 5:position + 9])
+                return width, height
+            position += 2 + length
+    return None
+
+
+def safe_stem(name: str) -> str:
+    """送られてきたファイル名から、Windows でそのまま使える部分だけを残す（パス区切り・記号は捨てる）。"""
+    stem = Path(name.replace("\\", "/")).stem
+    cleaned = "".join(ch if (ch.isalnum() or ch in "-_ ") else "_" for ch in stem).strip(" _")
+    return cleaned[:60] or "image"
+
+
+def image_filename(original: str, ext: str, now: time.struct_time | None = None) -> str:
+    stamp = time.strftime("%Y%m%d-%H%M%S", now or time.localtime())
+    return f"{stamp}-{safe_stem(original)}.{ext}"
+
+
+def unique_path(directory: Path, name: str) -> Path:
+    candidate = directory / name
+    stem, suffix = candidate.stem, candidate.suffix
+    counter = 2
+    while candidate.exists():
+        candidate = directory / f"{stem}-{counter}{suffix}"
+        counter += 1
+    return candidate
+
+
+def pictures_dir() -> Path:
+    """Windows の「ピクチャ」フォルダー（OneDrive に移動されていてもその場所）。取れなければ ~/Pictures。"""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class GUID(ctypes.Structure):
+                _fields_ = [("Data1", ctypes.c_uint32), ("Data2", ctypes.c_uint16), ("Data3", ctypes.c_uint16), ("Data4", ctypes.c_ubyte * 8)]
+
+            folder_id = GUID(0x33E28130, 0x4E1E, 0x4676, (ctypes.c_ubyte * 8)(0x83, 0x5A, 0x98, 0x39, 0x5C, 0x3B, 0xC3, 0xBB))
+            shell32 = ctypes.WinDLL("shell32")
+            ole32 = ctypes.WinDLL("ole32")
+            shell32.SHGetKnownFolderPath.argtypes = [ctypes.POINTER(GUID), wintypes.DWORD, wintypes.HANDLE, ctypes.POINTER(ctypes.c_wchar_p)]
+            shell32.SHGetKnownFolderPath.restype = ctypes.c_long
+            ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+            result = ctypes.c_wchar_p()
+            if shell32.SHGetKnownFolderPath(ctypes.byref(folder_id), 0, None, ctypes.byref(result)) == 0 and result.value:
+                value = result.value
+                ole32.CoTaskMemFree(result)
+                return Path(value)
+        except (OSError, AttributeError, ValueError):
+            pass
+    return Path.home() / "Pictures"
+
+
+def default_image_dir() -> Path:
+    return pictures_dir() / APP_NAME
+
+
+def open_folder(path: Path) -> None:
+    """エクスプローラー（または OS 既定のファイルマネージャー）でフォルダーを開く。"""
+    if sys.platform == "win32":
+        os.startfile(str(path))  # type: ignore[attr-defined]
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", str(path)])
+    else:
+        subprocess.Popen(["xdg-open", str(path)])
+
+
+# ---------------------------------------------------------------------------
 # 共有状態
 # ---------------------------------------------------------------------------
 
@@ -244,6 +581,7 @@ class ClipState:
         self.hash = text_hash("")
         self.updated = time.time()
         self.source = "pc"
+        self.image: dict | None = None  # kind == "image" のときのメタ情報（id / size / width / height / type）
         self._subscribers: set[queue.Queue] = set()
 
     def _payload(self) -> dict:
@@ -254,19 +592,21 @@ class ClipState:
             "updated": self.updated,
             "source": self.source,
             "length": len(self.text),
+            "image": self.image,
         }
 
     def snapshot(self) -> dict:
         with self._lock:
             return self._payload()
 
-    def set(self, text: str, kind: str, source: str) -> bool:
+    def set(self, text: str, kind: str, source: str, image: dict | None = None) -> bool:
         """内容が変わったときだけ更新して購読者へ配信する。"""
         with self._lock:
-            new_hash = text_hash(text)
+            image = image if kind == "image" else None
+            new_hash = f"image:{image['id']}" if image else text_hash(text)
             if new_hash == self.hash and kind == self.kind:
                 return False
-            self.text, self.kind, self.hash = text, kind, new_hash
+            self.text, self.kind, self.hash, self.image = text, kind, new_hash, image
             self.updated, self.source = time.time(), source
             payload = self._payload()
             subscribers = list(self._subscribers)
@@ -1107,14 +1447,21 @@ class ClipBridgeApp:
         web_dir: Path = WEB_DIR,
         updater: Updater | None = None,
         probe=None,
+        image_dir: Path | None = None,
     ) -> None:
         self.port = port
         self.config_path = config_path
         self.config = load_config(config_path)
         self.token: str = self.config["token"]
         self.pc_name = self.config.get("pc_name") or socket.gethostname()
+        configured_dir = self.config.get("image_dir")
+        self.image_dir = image_dir or (Path(configured_dir) if isinstance(configured_dir, str) and configured_dir else default_image_dir())
+        self.last_image: dict | None = None
         self.clipboard = clipboard or detect_clipboard()
         self._clip_lock = threading.Lock()
+        self._own_sequence = -1  # 自分がクリップボードに書いた直後の番号。監視スレッドが読み戻さないようにする
+        self._image_lock = threading.Lock()
+        self._image: tuple[bytes, dict] | None = None  # PC のクリップボードにある画像（iPhone へ配る本体とメタ情報）
         self.state = ClipState()
         self.pairing = Pairing()
         self.devices: dict[str, dict] = {}
@@ -1152,11 +1499,40 @@ class ClipBridgeApp:
         try:
             with self._clip_lock:
                 text, kind = self.clipboard.read()
+                image_data: bytes | None = None
+                if kind == "image":
+                    try:
+                        image_data = self.clipboard.read_image()
+                    except Exception as exc:  # noqa: BLE001 - プレビューなしで「画像」とだけ伝える
+                        self.log(f"clipboard image read failed: {type(exc).__name__}")
         except Exception as exc:  # noqa: BLE001 - 内容はログに出さない
             if initial:
                 self.log(f"clipboard read failed: {type(exc).__name__}")
             return
-        self.state.set(normalize_newlines(text), kind, "pc")
+        self.state.set(normalize_newlines(text), kind, "pc", self._store_image(image_data))
+
+    def _store_image(self, data: bytes | None) -> dict | None:
+        """iPhone に配る画像を保持し、SSE で送るメタ情報を返す。画像でない・大きすぎるときは None（保持も消す）。"""
+        info: dict | None = None
+        sniffed = sniff_image(data) if data else None
+        if data and sniffed and len(data) <= MAX_IMAGE_BYTES:
+            kind, ext = sniffed
+            width, height = image_dimensions(data) or (0, 0)
+            info = {
+                "id": hashlib.sha256(data).hexdigest()[:16],
+                "size": len(data),
+                "width": width,
+                "height": height,
+                "type": IMAGE_CONTENT_TYPES.get(kind, "application/octet-stream"),
+                "ext": ext,
+            }
+        with self._image_lock:
+            self._image = (data, info) if info and data else None
+        return info
+
+    def current_image(self) -> tuple[bytes, dict] | None:
+        with self._image_lock:
+            return self._image
 
     def start_watcher(self) -> threading.Thread:
         thread = threading.Thread(target=self._watch_loop, name="clipboard-watch", daemon=True)
@@ -1170,7 +1546,8 @@ class ClipBridgeApp:
                 sequence = self.clipboard.sequence()
                 if sequence != last_sequence:
                     last_sequence = sequence
-                    self._refresh_from_clipboard()
+                    if sequence > self._own_sequence:  # 自分が書いた内容（画像）を読み戻して再配信しない
+                        self._refresh_from_clipboard()
             except Exception:  # noqa: BLE001
                 pass
             time.sleep(self.watch_interval)
@@ -1181,6 +1558,63 @@ class ClipBridgeApp:
         normalized = normalize_newlines(text)
         self.state.set(normalized, "text" if normalized else "empty", "phone")
         return self.state.snapshot()
+
+    def receive_image(self, data: bytes, original_name: str, save: bool = True) -> dict:
+        """iPhone から届いた画像を PC のクリップボードに入れ、save のときは保存フォルダーにも書く。
+
+        保存ありのときはファイルを優先し、クリップボードへの変換に失敗しても（HEIC が開けない等）warning として返す。
+        保存なし（クリップボードだけ）のときは変換に失敗したら例外にする。
+        """
+        sniffed = sniff_image(data)
+        if sniffed is None:
+            raise ValueError("画像ファイルとして読めません")
+        kind, ext = sniffed
+        target: Path | None = None
+        if save:
+            self.image_dir.mkdir(parents=True, exist_ok=True)
+            target = unique_path(self.image_dir, image_filename(original_name, ext))
+            temp = target.with_name(target.name + ".part")
+            temp.write_bytes(data)
+            os.replace(temp, target)
+        warning: str | None = None
+        try:
+            with self._clip_lock:
+                self.clipboard.write_image(data)
+                self._own_sequence = self.clipboard.sequence()
+        except Exception as exc:  # noqa: BLE001 - 理由だけ返す（内容は出さない）
+            self.log(f"clipboard image failed: {type(exc).__name__}")
+            warning = str(exc) or type(exc).__name__
+            if target is None:
+                raise ClipboardError(f"PC のクリップボードに入れられませんでした: {warning}") from exc
+        else:
+            # 送った iPhone 側にも「PC のクリップボードは今この画像」と伝える（送信元なので新着扱いにはならない）
+            self.state.set("", "image", "phone", self._store_image(data))
+        name = target.name if target else f"{safe_stem(original_name)}.{ext}"
+        self.last_image = {
+            "name": name,
+            "path": str(target) if target else None,
+            "saved": target is not None,
+            "size": len(data),
+            "kind": kind,
+            "received": time.time(),
+            "clipboard": warning is None,
+        }
+        self.log(
+            f"image received: {kind} {len(data)} bytes"
+            + (" saved" if target else " clipboard-only")
+            + ("" if warning is None else " (clipboard failed)")
+        )
+        return {
+            "ok": True,
+            "name": name,
+            "path": str(target) if target else None,
+            "saved": target is not None,
+            "dir": str(self.image_dir),
+            "size": len(data),
+            "kind": kind,
+            "clipboard": warning is None,
+            "warning": warning,
+        }
 
     # --- Tailscale ---------------------------------------------------------
     def tailscale_summary(self, force: bool = False) -> dict:
@@ -1336,6 +1770,8 @@ class ClipBridgeApp:
             },
             "clipboard_backend": self.clipboard.name,
             "clip": {"kind": snapshot["kind"], "length": snapshot["length"], "updated": snapshot["updated"]},
+            "image_dir": str(self.image_dir),
+            "last_image": self.last_image,
             "config_path": str(self.config_path),
             "update": self.updater.info,
             "frozen": FROZEN,
@@ -1517,7 +1953,7 @@ def make_handler(app: ClipBridgeApp):
                 # 送信側がレスポンスを受け取れるよう、上限ぶんだけ読み捨ててから閉じる
                 self.rfile.read(min(length, limit + 1))
                 self.close_connection = True
-                self._error(413, "too_large", "1MB を超えています")
+                self._error(413, "too_large", f"{max(1, limit // (1024 * 1024))}MB を超えています")
                 return None
             return self.rfile.read(length)
 
@@ -1548,6 +1984,20 @@ def make_handler(app: ClipBridgeApp):
                     return
                 app.record_device(self)
                 return self._json(200, app.state.snapshot())
+            if path == "/api/image":
+                # PC のクリップボードにある画像そのもの（iPhone でプレビュー・保存する）。?id= が今の画像と違えば 404
+                if not self._require_token():
+                    return
+                app.record_device(self)
+                current = app.current_image()
+                wanted = query.get("id")
+                if current is None or (wanted and wanted != current[1]["id"]):
+                    return self._error(404, "no_image", "PC のクリップボードに画像がありません（内容が変わりました）")
+                data, info = current
+                return self._send(
+                    200, data, info["type"],
+                    {"Content-Disposition": f'inline; filename="clipbridge-{info["id"]}.{info["ext"]}"'},
+                )
             if path == "/api/events":
                 if not self._require_token():
                     return
@@ -1664,6 +2114,8 @@ def make_handler(app: ClipBridgeApp):
                 return self._pair()
             if path == "/api/clip":
                 return self._write_clip()
+            if path == "/api/image":
+                return self._write_image()
             if path.startswith("/pc/api/"):
                 return self._admin_action(path[len("/pc/api/"):])
             if path in ("/", "/api/health", "/api/events", "/manifest.webmanifest") or path in STATIC_FILES:
@@ -1712,6 +2164,28 @@ def make_handler(app: ClipBridgeApp):
             app.log(f"clipboard written: {len(text)} chars")
             self._json(200, {"ok": True, "length": len(text), "hash": snapshot["hash"]})
 
+        def _write_image(self) -> None:
+            """iPhone からの画像。本文は画像そのもの、元のファイル名は ?name= で受け取る（形式は中身で判定）。"""
+            if not self._require_token():
+                return
+            if not self._origin_ok():
+                return self._error(403, "origin_mismatch", "Origin が一致しません")
+            body = self._read_body(MAX_IMAGE_BYTES)
+            if body is None:
+                return
+            if sniff_image(body) is None:
+                return self._error(415, "unsupported_media_type", "画像ファイル（JPEG / PNG / GIF / WebP / HEIC）を送ってください")
+            query = self._query()
+            try:
+                result = app.receive_image(body, query.get("name") or "image", save=query.get("save") != "0")
+            except ClipboardError as exc:
+                return self._error(500, "clipboard", str(exc))
+            except (OSError, ValueError) as exc:
+                app.log(f"image save failed: {type(exc).__name__}")
+                return self._error(500, "image_save_failed", f"画像を保存できませんでした（{type(exc).__name__}）")
+            app.record_device(self)
+            self._json(200, result)
+
         def _admin_action(self, action: str) -> None:
             if not self._is_admin():
                 return self._not_found()
@@ -1742,6 +2216,13 @@ def make_handler(app: ClipBridgeApp):
                     return self._error(500, "startup_failed", f"自動起動の設定に失敗しました: {type(exc).__name__}")
                 app.log(f"startup {'enabled' if enabled else 'disabled'}")
                 return self._json(200, {"ok": True, "enabled": enabled, "path": str(path)})
+            if action == "images/open":
+                try:
+                    app.image_dir.mkdir(parents=True, exist_ok=True)
+                    open_folder(app.image_dir)
+                except OSError as exc:
+                    return self._error(500, "open_failed", f"フォルダーを開けませんでした: {type(exc).__name__}")
+                return self._json(200, {"ok": True, "path": str(app.image_dir)})
             if action == "update/check":
                 return self._json(200, app.updater.check())
             if action == "update/apply":

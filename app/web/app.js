@@ -30,12 +30,24 @@
     clipText: $('clipText'),
     clipMeta: $('clipMeta'),
     newBadge: $('newBadge'),
+    clipImageWrap: $('clipImageWrap'),
+    clipImage: $('clipImage'),
+    clipImageNote: $('clipImageNote'),
     copyBtn: $('copyBtn'),
+    shareImageBtn: $('shareImageBtn'),
+    imageSaveHint: $('imageSaveHint'),
     copyFallback: $('copyFallback'),
     copyHint: $('copyHint'),
     sendBtn: $('sendBtn'),
     sendText: $('sendText'),
     sendMsg: $('sendMsg'),
+    imageInput: $('imageInput'),
+    imageBtn: $('imageBtn'),
+    imageModeInputs: document.querySelectorAll('input[name="imageMode"]'),
+    imageProgress: $('imageProgress'),
+    imageBar: $('imageBar'),
+    imageMsg: $('imageMsg'),
+    imageDetail: $('imageDetail'),
     a2hs: $('a2hs'),
     pcName: $('pcName'),
     unpairBtn: $('unpairBtn'),
@@ -111,6 +123,7 @@
   let active = pcs.find((pc) => pc.origin === storage.get(ACTIVE_KEY)) || pcs[0] || null;
   const pcStatus = {};           // origin -> { state: 'ok' | 'warn' | 'err' | '', label }
   let current = null;            // 最新の PC クリップボード
+  let preview = null;            // PC の画像のプレビュー { id, origin, blob, url }
   let lastHash = null;
   let eventSource = null;
   let toastTimer = null;
@@ -188,8 +201,13 @@
     current = null;
     lastHash = null;
     firstEvent = true;
+    dropPreview();
+    els.clipText.hidden = false;
     els.clipText.textContent = '（読み込み中…）';
     els.clipText.classList.add('empty');
+    els.clipImageWrap.hidden = true;
+    els.shareImageBtn.hidden = true;
+    els.imageSaveHint.hidden = true;
     els.clipMeta.textContent = '';
     els.newBadge.hidden = true;
     els.copyBtn.disabled = true;
@@ -197,6 +215,8 @@
     els.copyHint.hidden = true;
     els.sendMsg.textContent = '';
     els.sendMsg.className = 'msg';
+    setImageMsg('');
+    els.imageDetail.hidden = true;
   }
 
   function switchTo(origin) {
@@ -520,35 +540,143 @@
   els.addFromSettingsBtn.addEventListener('click', showAdd);
 
   // ---- PC → iPhone -------------------------------------------------------------
+  function metaText(data) {
+    const when = relativeTime(data.updated);
+    if (data.kind === 'image') {
+      if (!data.image) return `画像 ・ ${when}`;
+      const dims = data.image.width && data.image.height ? `${data.image.width}×${data.image.height} ・ ` : '';
+      return `画像 ${dims}${formatBytes(data.image.size)} ・ ${when}`;
+    }
+    return `${data.length.toLocaleString()} 文字 ・ ${when}`;
+  }
+
   function render(data) {
     current = data;
     const changed = data.hash !== lastHash;
     lastHash = data.hash;
+    const hasImage = data.kind === 'image' && !!data.image;
+    els.clipText.hidden = hasImage;
+    els.clipImageWrap.hidden = !hasImage;
+    // iOS の Safari では Web ページから写真に直接保存できないため、確実に使える「画像を長押し」を案内する
+    els.shareImageBtn.hidden = !(hasImage && navigator.share && navigator.canShare);
+    els.imageSaveHint.hidden = !hasImage;
+    if (!hasImage || changed) els.imageSaveHint.textContent = SAVE_HINT;
     if (data.kind === 'text' && data.text) {
       els.clipText.textContent = data.text;
       els.clipText.classList.remove('empty');
       els.copyBtn.disabled = false;
+    } else if (data.kind === 'image') {
+      els.clipText.textContent = '（画像が入っていますが、表示できる形式ではありません）';
+      els.clipText.classList.add('empty');
+      els.copyBtn.disabled = !hasImage;
     } else {
       els.clipText.textContent = data.kind === 'other' ? '（テキスト以外の内容です）' : '（空です）';
       els.clipText.classList.add('empty');
       els.copyBtn.disabled = true;
     }
-    els.clipMeta.textContent = `${data.length.toLocaleString()} 文字 ・ ${relativeTime(data.updated)}`;
+    if (hasImage) showPreview(active, data.image); else dropPreview();
+    els.clipMeta.textContent = metaText(data);
     if (changed && !firstEvent) {
       els.newBadge.hidden = data.source === 'phone';
-      els.clipText.classList.remove('flash');
-      void els.clipText.offsetWidth;
-      els.clipText.classList.add('flash');
+      const target = hasImage ? els.clipImageWrap : els.clipText;
+      target.classList.remove('flash');
+      void target.offsetWidth;
+      target.classList.add('flash');
       els.copyFallback.hidden = true;
       els.copyHint.hidden = true;
     }
     firstEvent = false;
   }
 
-  setInterval(() => { if (current) els.clipMeta.textContent = `${current.length.toLocaleString()} 文字 ・ ${relativeTime(current.updated)}`; }, 10000);
+  setInterval(() => { if (current) els.clipMeta.textContent = metaText(current); }, 10000);
+
+  const SAVE_HINT = '写真に保存するには、上の画像を長押しして「“写真”に保存」を選びます。';
+
+  // PC のクリップボードにある画像を取り寄せて表示する（コピー・共有はこの blob を使う）
+  function dropPreview() {
+    if (preview && preview.url) {
+      // 長押しメニューの「“写真”に保存」が進行中でも壊れないよう、URL の解放は少し遅らせる
+      const url = preview.url;
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+    preview = null;
+    els.clipImage.removeAttribute('src');
+    els.clipImageNote.textContent = '';
+  }
+
+  async function fetchImageBlob(pc, image) {
+    let response;
+    try {
+      response = await fetch(`${pc.origin}/api/image?id=${encodeURIComponent(image.id)}`, { cache: 'no-store', mode: 'cors', headers: { 'X-Token': pc.token || '' } });
+    } catch {
+      throw new Error('画像を取得できません（接続を確認してください）');
+    }
+    if (response.status === 401) {
+      removePc(pc.origin, `${displayName(pc)} との接続が解除されました。PC の画面に表示されている新しいコードで接続し直してください。`);
+      throw new Error('接続が解除されました');
+    }
+    if (!response.ok) throw new Error('画像を取得できませんでした（PC 側の内容が変わった可能性があります）');
+    return response.blob();
+  }
+
+  async function showPreview(pc, image) {
+    if (!pc) return;
+    if (preview && preview.id === image.id && preview.origin === pc.origin) return;
+    dropPreview();
+    const pending = { id: image.id, origin: pc.origin, blob: null, url: null };
+    preview = pending;
+    els.clipImageNote.textContent = '読み込んでいます…';
+    try {
+      const blob = await fetchImageBlob(pc, image);
+      if (preview !== pending) return; // その間に別の内容になった
+      pending.blob = blob;
+      pending.url = URL.createObjectURL(blob);
+      els.clipImage.src = pending.url;
+      els.clipImageNote.textContent = '';
+    } catch (error) {
+      if (preview === pending) els.clipImageNote.textContent = error.message;
+    }
+  }
+
+  async function copyImage() {
+    els.newBadge.hidden = true;
+    const blob = preview && preview.blob;
+    if (!blob) { toast('画像をまだ読み込んでいます。少し待ってからもう一度押してください。', 'error'); return; }
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.write || !window.ClipboardItem) throw new Error('unsupported');
+      // Safari が受け付ける画像形式は PNG だけ。別形式なら変換結果の Promise を渡す（ユーザー操作の範囲内で write を呼ぶため）
+      const png = blob.type === 'image/png' ? blob : toPng(blob);
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+      vibrate();
+      toast('画像を iPhone にコピーしました');
+      els.imageSaveHint.textContent = SAVE_HINT;
+    } catch {
+      els.imageSaveHint.textContent = '自動でコピーできませんでした。上の画像を長押しして「コピー」を選んでください（「“写真”に保存」で写真にも入ります）。';
+      els.imageSaveHint.hidden = false;
+    }
+  }
+
+  els.shareImageBtn.addEventListener('click', async () => {
+    // 共有シート（AirDrop / メッセージ / “ファイル”に保存 など）。写真への保存は長押しメニューの方が確実
+    const blob = preview && preview.blob;
+    if (!blob) { toast('画像をまだ読み込んでいます。少し待ってからもう一度押してください。', 'error'); return; }
+    const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+    const file = new File([blob], `ClipBridge-${fileStamp()}.${ext}`, { type: blob.type || 'image/png' });
+    if (!(navigator.canShare && navigator.canShare({ files: [file] }))) {
+      toast('この iOS では共有シートに画像を渡せません。画像を長押しして保存してください。', 'error');
+      return;
+    }
+    try {
+      await navigator.share({ files: [file], title: 'ClipBridge' });
+    } catch (error) {
+      if (!error || error.name !== 'AbortError') toast('共有できませんでした', 'error');
+    }
+  });
 
   els.copyBtn.addEventListener('click', async () => {
-    if (!current || !current.text) return;
+    if (!current) return;
+    if (current.kind === 'image') { await copyImage(); return; }
+    if (!current.text) return;
     els.newBadge.hidden = true;
     try {
       if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('unsupported');
@@ -589,19 +717,51 @@
     return data;
   }
 
+  async function readPhoneClipboard() {
+    // 画像も読めるよう read() を優先し、非対応・失敗なら readText() に戻す
+    if (navigator.clipboard.read) {
+      let items = null;
+      try {
+        items = await navigator.clipboard.read();
+      } catch (error) {
+        if (/NotAllowed|denied|permission/i.test(String(error && (error.name + ' ' + error.message)))) throw error;
+      }
+      if (items) {
+        for (const item of items) {
+          const imageType = item.types.find((type) => type.startsWith('image/'));
+          if (imageType) {
+            const blob = await item.getType(imageType);
+            const ext = (imageType.split('/')[1] || 'png').replace('jpeg', 'jpg');
+            return { image: new File([blob], `clipboard.${ext}`, { type: imageType }) };
+          }
+        }
+        for (const item of items) {
+          if (item.types.includes('text/plain')) return { text: await (await item.getType('text/plain')).text() };
+        }
+        return {};
+      }
+    }
+    if (!navigator.clipboard.readText) throw new Error('unsupported');
+    return { text: await navigator.clipboard.readText() };
+  }
+
   els.sendBtn.addEventListener('click', async () => {
     els.sendBtn.disabled = true;
     els.sendMsg.textContent = '';
     els.sendMsg.className = 'msg';
     try {
-      if (!navigator.clipboard || !navigator.clipboard.readText) throw new Error('unsupported');
-      const text = await navigator.clipboard.readText();
-      if (!text) {
-        els.sendMsg.textContent = 'iPhone のクリップボードにテキストがありません。';
+      if (!navigator.clipboard) throw new Error('unsupported');
+      const content = await readPhoneClipboard();
+      if (content.image) {
+        await sendImages([content.image], 'clipboard');
+        return;
+      }
+      if (!content.text) {
+        els.sendMsg.textContent = 'iPhone のクリップボードにテキストも画像もありません。';
         els.sendMsg.className = 'msg error';
         return;
       }
-      await send(text);
+      await send(content.text);
     } catch (error) {
       if (error && /unsupported|NotAllowed|denied|permission/i.test(String(error.name || error.message))) {
         els.sendMsg.textContent = '読み取りが許可されませんでした。下の欄に貼り付けてください。';
@@ -629,6 +789,197 @@
         els.sendMsg.className = 'msg error';
       }
     }, 450);
+  });
+
+  // ---- iPhone → PC（画像） ------------------------------------------------------
+  const IMAGE_MODE_KEY = 'clipbridge.imageMode'; // save: 保存 + クリップボード / clip: クリップボードだけ
+  const NATIVE_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/bmp']); // Windows (GDI+) がそのまま開ける形式
+  let imageBusy = false;
+
+  function imageMode() { return storage.get(IMAGE_MODE_KEY) === 'clip' ? 'clip' : 'save'; }
+  for (const input of els.imageModeInputs) {
+    input.checked = input.value === imageMode();
+    input.addEventListener('change', () => { if (input.checked) storage.set(IMAGE_MODE_KEY, input.value); });
+  }
+
+  function formatBytes(n) {
+    if (!n) return '0 KB';
+    return n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1048576).toFixed(1)} MB`;
+  }
+
+  function fileStamp() {
+    const d = new Date();
+    const p = (v) => String(v).padStart(2, '0');
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  }
+
+  function setImageMsg(text, kind = '') {
+    els.imageMsg.textContent = text;
+    els.imageMsg.className = 'msg ' + kind;
+  }
+
+  function setProgress(ratio) {
+    const pct = Math.round(Math.max(0, Math.min(1, ratio)) * 100);
+    els.imageBar.style.width = pct + '%';
+    els.imageProgress.setAttribute('aria-valuenow', String(pct));
+  }
+
+  function loadImageElement(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode')); };
+      img.src = url;
+    });
+  }
+
+  async function drawToCanvas(file) {
+    let source;
+    try {
+      source = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    } catch {
+      source = await loadImageElement(file); // HEIC など createImageBitmap が扱えない形式も <img> なら Safari が描ける
+    }
+    let width = source.naturalWidth || source.width;
+    let height = source.naturalHeight || source.height;
+    const limit = 16 * 1024 * 1024; // iOS の canvas 上限（画素数）
+    if (width * height > limit) {
+      const scale = Math.sqrt(limit / (width * height));
+      width = Math.floor(width * scale);
+      height = Math.floor(height * scale);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext('2d').drawImage(source, 0, 0, width, height);
+    if (source.close) source.close();
+    return canvas;
+  }
+
+  function canvasToBlob(canvas, type, quality) {
+    return new Promise((resolve, reject) => canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('encode'))), type, quality));
+  }
+
+  async function toPng(blob) {
+    return canvasToBlob(await drawToCanvas(blob), 'image/png');
+  }
+
+  async function prepareImage(file) {
+    // HEIC / WebP など Windows 側で開けない可能性のある形式は、iPhone 側で JPEG（透過がありうる形式は PNG）に変換してから送る
+    if (NATIVE_IMAGE_TYPES.has(file.type)) return file;
+    try {
+      const canvas = await drawToCanvas(file);
+      const keepAlpha = /webp|svg|avif/i.test(file.type);
+      const type = keepAlpha ? 'image/png' : 'image/jpeg';
+      const blob = await canvasToBlob(canvas, type, 0.92);
+      const stem = (file.name || 'image').replace(/\.[^.]+$/, '') || 'image';
+      return new File([blob], `${stem}.${keepAlpha ? 'png' : 'jpg'}`, { type });
+    } catch {
+      return file; // 変換できなければそのまま送る（PC 側で開けない形式なら警告が返る）
+    }
+  }
+
+  function uploadImage(file, pc, onProgress) {
+    const save = imageMode() === 'save' ? '1' : '0';
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${pc.origin}/api/image?name=${encodeURIComponent(file.name || 'image')}&save=${save}`);
+      xhr.setRequestHeader('X-Token', pc.token || '');
+      xhr.responseType = 'json';
+      xhr.timeout = 180000;
+      xhr.upload.addEventListener('progress', (event) => { if (event.lengthComputable) onProgress(event.loaded / event.total); });
+      xhr.addEventListener('load', () => {
+        const data = xhr.response && typeof xhr.response === 'object' ? xhr.response : {};
+        if (xhr.status === 401) {
+          removePc(pc.origin, `${displayName(pc)} との接続が解除されました。PC の画面に表示されている新しいコードで接続し直してください。`);
+          reject(new Error('接続が解除されました'));
+          return;
+        }
+        if (xhr.status < 200 || xhr.status >= 300) { reject(new Error(data.message || `エラー (${xhr.status})`)); return; }
+        resolve(data);
+      });
+      xhr.addEventListener('error', () => {
+        setConn('err', 'オフライン', pc);
+        reject(new Error(`${displayName(pc)} に接続できません。iPhone の Tailscale がオンか、PC で ClipBridge が起動しているか確認してください。`));
+      });
+      xhr.addEventListener('timeout', () => reject(new Error('送信がタイムアウトしました。通信状態を確認してください。')));
+      xhr.addEventListener('abort', () => reject(new Error('送信を中止しました。')));
+      xhr.send(file);
+    });
+  }
+
+  async function sendImages(files, from = 'picker') {
+    const target = active;
+    if (!target || imageBusy || !files.length) return;
+    imageBusy = true;
+    els.imageBtn.disabled = true;
+    els.imageDetail.hidden = true;
+    els.imageProgress.hidden = false;
+    setProgress(0);
+    let sent = 0;
+    let last = null;
+    let failure = null;
+    try {
+      for (let index = 0; index < files.length; index += 1) {
+        const counter = files.length > 1 ? `（${index + 1} / ${files.length}）` : '';
+        setImageMsg(`画像を準備しています…${counter}`);
+        const file = await prepareImage(files[index]);
+        setImageMsg(`${displayName(target)} へ送信中…${counter}`);
+        setProgress(0);
+        last = await uploadImage(file, target, setProgress);
+        sent += 1;
+      }
+    } catch (error) {
+      failure = error;
+    }
+    els.imageProgress.hidden = true;
+    els.imageBtn.disabled = false;
+    imageBusy = false;
+    const name = displayName(target);
+    if (sent && last) {
+      vibrate();
+      let text;
+      if (last.saved && last.clipboard) {
+        text = sent > 1
+          ? `${sent} 枚を ${name} に保存し、最後の 1 枚をクリップボードに入れました。`
+          : `${last.name}（${formatBytes(last.size)}）を ${name} に保存し、クリップボードに入れました。PC で Ctrl+V で貼り付けできます。`;
+      } else if (last.saved) {
+        text = `${sent > 1 ? `${sent} 枚` : last.name} を ${name} に保存しました（クリップボードには入れられませんでした: ${last.warning}）`;
+      } else {
+        text = sent > 1
+          ? `${sent} 枚を送り、最後の 1 枚を ${name} のクリップボードに入れました（保存はしていません）。`
+          : `${formatBytes(last.size)} の画像を ${name} のクリップボードに入れました（保存はしていません）。PC で Ctrl+V で貼り付けできます。`;
+      }
+      setImageMsg(text, 'ok');
+      if (last.saved) {
+        els.imageDetail.textContent = `保存先: ${last.path || last.dir}`;
+        els.imageDetail.hidden = false;
+      }
+      toast(`${name} へ送りました`);
+      if (from === 'clipboard') {
+        els.sendMsg.textContent = `iPhone のコピー内容（画像）を ${name} へ送りました`;
+        els.sendMsg.className = 'msg ok';
+      }
+    }
+    if (failure) {
+      setImageMsg((sent ? `${sent} 枚を送ったあとにエラー: ` : '送れませんでした: ') + failure.message, 'error');
+      if (from === 'clipboard') {
+        els.sendMsg.textContent = failure.message;
+        els.sendMsg.className = 'msg error';
+      }
+    }
+  }
+
+  els.imageBtn.addEventListener('click', () => {
+    if (!active || imageBusy) return;
+    els.imageInput.value = '';
+    els.imageInput.click();
+  });
+  els.imageInput.addEventListener('change', async () => {
+    const files = Array.from(els.imageInput.files || []);
+    if (files.length) await sendImages(files);
+    els.imageInput.value = '';
   });
 
   // ---- SSE 接続 ----------------------------------------------------------------

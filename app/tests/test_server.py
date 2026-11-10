@@ -821,3 +821,273 @@ def test_service_worker_script_carries_version(app):
     text = body.decode("utf-8")
     assert f"'{server.__version__}'" in text and "__VERSION__" not in text
     assert "'/api" not in text and "'/pc" not in text  # API と PC 画面はキャッシュ対象に含めない
+
+
+# ---------------------------------------------------------------------------
+# 画像（iPhone → PC / PC → iPhone）
+# ---------------------------------------------------------------------------
+
+
+def tiny_png(width: int = 2, height: int = 2, color: bytes = b"\xff\x00\x00") -> bytes:
+    import struct
+    import zlib
+
+    raw = b"".join(b"\x00" + color * width for _ in range(height))
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(raw))
+        + chunk(b"IEND", b"")
+    )
+
+
+def upload(app, data: bytes, name: str = "IMG_0001.png", save: bool | None = None, **kwargs):
+    query = "?name=" + quote(name) + ("" if save is None else f"&save={int(save)}")
+    headers = {"Content-Type": "image/png", **kwargs.pop("headers", {})}
+    return request(app.base, "/api/image" + query, method="POST", token=kwargs.pop("token", app.token), data=data, headers=headers, **kwargs)
+
+
+def test_sniff_image_detects_formats_by_content():
+    assert server.sniff_image(tiny_png()) == ("png", "png")
+    assert server.sniff_image(b"\xff\xd8\xff\xe1" + b"\x00" * 20) == ("jpeg", "jpg")
+    assert server.sniff_image(b"GIF89a" + b"\x00" * 20) == ("gif", "gif")
+    assert server.sniff_image(b"RIFF\x00\x00\x00\x00WEBPVP8 " + b"\x00" * 8) == ("webp", "webp")
+    assert server.sniff_image(b"\x00\x00\x00\x18ftypheic" + b"\x00" * 16) == ("heic", "heic")
+    assert server.sniff_image(b"<svg xmlns='http://www.w3.org/2000/svg'></svg>") is None
+    assert server.sniff_image(b"\x89PNG") is None  # 短すぎる
+    assert server.sniff_image(b"") is None
+
+
+def test_image_dimensions_for_png_gif_jpeg():
+    assert server.image_dimensions(tiny_png(7, 3)) == (7, 3)
+    assert server.image_dimensions(b"GIF89a\x10\x00\x20\x00" + b"\x00" * 10) == (16, 32)
+    # JPEG: SOI, APP0 (長さ 16), SOF0 (高さ 20 / 幅 40)
+    jpeg = b"\xff\xd8" + b"\xff\xe0" + b"\x00\x10" + b"\x00" * 14 + b"\xff\xc0" + b"\x00\x11" + b"\x08" + b"\x00\x14" + b"\x00\x28" + b"\x00" * 10
+    assert server.image_dimensions(jpeg) == (40, 20)
+    assert server.image_dimensions(b"not an image") is None
+
+
+def test_image_filename_is_safe_and_stamped():
+    now = time.strptime("2026-11-10 09:05:07", "%Y-%m-%d %H:%M:%S")
+    assert server.image_filename("IMG_0012.HEIC", "jpg", now) == "20261110-090507-IMG_0012.jpg"
+    assert server.image_filename("../../etc/passwd", "png", now) == "20261110-090507-passwd.png"
+    assert server.image_filename("C:\\Users\\x\\写真 (1).png", "png", now) == "20261110-090507-写真 _1.png"
+    assert server.image_filename("", "png", now) == "20261110-090507-image.png"
+    assert server.safe_stem("a" * 100 + ".png") == "a" * 60
+    assert server.safe_stem("...") == "image"
+
+
+def test_unique_path_appends_counter(tmp_path):
+    assert server.unique_path(tmp_path, "x.png") == tmp_path / "x.png"
+    (tmp_path / "x.png").write_bytes(b"1")
+    assert server.unique_path(tmp_path, "x.png") == tmp_path / "x-2.png"
+    (tmp_path / "x-2.png").write_bytes(b"1")
+    assert server.unique_path(tmp_path, "x.png") == tmp_path / "x-3.png"
+
+
+def test_image_dir_comes_from_config_or_default(tmp_path):
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"token": "x" * 40, "image_dir": str(tmp_path / "custom")}), encoding="utf-8")
+    application = server.ClipBridgeApp(port=0, config_path=config, clipboard=server.MemoryClipboard(), tailscale=FakeTailscale(), startup_dir=tmp_path / "s")
+    assert application.image_dir == tmp_path / "custom"
+    application = server.ClipBridgeApp(port=0, config_path=tmp_path / "other.json", clipboard=server.MemoryClipboard(), tailscale=FakeTailscale(), startup_dir=tmp_path / "s")
+    assert application.image_dir == server.default_image_dir()
+    assert application.image_dir.name == "ClipBridge"
+
+
+def test_image_upload_saves_file_and_sets_clipboard(app, tmp_path):
+    app.image_dir = tmp_path / "Pictures" / "ClipBridge"
+    data = tiny_png()
+    status, _, body = upload(app, data)
+    assert status == 200
+    result = as_json(body)
+    assert result["ok"] and result["saved"] and result["clipboard"] and result["kind"] == "png" and result["warning"] is None
+    saved = Path(result["path"])
+    assert saved.parent == app.image_dir and saved.read_bytes() == data and saved.name.endswith("-IMG_0001.png")
+    assert result["dir"] == str(app.image_dir)
+    assert app.fake_clipboard.kind == "image" and app.fake_clipboard.image_data == data
+    # iPhone 側には「画像」とメタ情報（送信元 phone なので新着扱いにならない）が伝わる
+    _, _, body = request(app.base, "/api/clip", token=app.token)
+    clip = as_json(body)
+    assert clip["kind"] == "image" and clip["source"] == "phone"
+    assert clip["image"]["width"] == 2 and clip["image"]["height"] == 2 and clip["image"]["type"] == "image/png" and clip["image"]["size"] == len(data)
+    # 本体も取り出せる（PC → iPhone と同じ経路）
+    status, headers, body = request(app.base, "/api/image?id=" + clip["image"]["id"], token=app.token)
+    assert status == 200 and headers["Content-Type"] == "image/png" and body == data
+    # 監視スレッドが自分の書き込みを読み戻しても状態は変わらない
+    time.sleep(0.3)
+    assert as_json(request(app.base, "/api/clip", token=app.token)[2])["source"] == "phone"
+    # 同じ秒に同じ名前でも上書きしない
+    status, _, body = upload(app, data)
+    assert status == 200 and Path(as_json(body)["path"]) != saved and Path(as_json(body)["path"]).exists()
+    admin = app.admin_status()
+    assert admin["image_dir"] == str(app.image_dir)
+    assert admin["last_image"]["name"] == Path(as_json(body)["path"]).name and admin["last_image"]["saved"] is True
+
+
+def test_image_upload_clipboard_only_does_not_touch_disk(app, tmp_path):
+    app.image_dir = tmp_path / "img"
+    data = tiny_png(3, 1)
+    status, _, body = upload(app, data, name="photo.png", save=False)
+    assert status == 200
+    result = as_json(body)
+    assert result["saved"] is False and result["path"] is None and result["clipboard"] is True and result["name"] == "photo.png"
+    assert not (tmp_path / "img").exists()
+    assert app.fake_clipboard.image_data == data
+    assert app.admin_status()["last_image"]["saved"] is False
+    # 保存なしでクリップボードにも入れられなければエラー（何も残らない）
+    def fail(_data):
+        raise server.ClipboardError("この形式の画像は Windows で開けません")
+
+    app.fake_clipboard.write_image = fail
+    status, _, body = upload(app, data, save=False)
+    assert status == 500 and as_json(body)["error"] == "clipboard" and "開けません" in as_json(body)["message"]
+    assert not (tmp_path / "img").exists()
+
+
+def test_image_upload_keeps_file_when_clipboard_fails(app, tmp_path):
+    app.image_dir = tmp_path / "img"
+
+    def fail(_data):
+        raise server.ClipboardError("この形式の画像は Windows で開けません")
+
+    app.fake_clipboard.write_image = fail
+    status, _, body = upload(app, tiny_png())
+    result = as_json(body)
+    assert status == 200 and result["saved"] is True and result["clipboard"] is False and "開けません" in result["warning"]
+    assert Path(result["path"]).exists()
+    assert app.admin_status()["last_image"]["clipboard"] is False
+
+
+def test_image_upload_validation(app, tmp_path, monkeypatch):
+    app.image_dir = tmp_path / "img"
+    assert upload(app, tiny_png(), token=None)[0] == 401
+    status, _, body = upload(app, b"<html>not an image</html>" * 2)
+    assert status == 415 and as_json(body)["error"] == "unsupported_media_type"
+    assert not (tmp_path / "img").exists()
+    monkeypatch.setattr(server, "MAX_IMAGE_BYTES", 16)
+    status, _, body = upload(app, tiny_png())
+    assert status == 413 and "MB" in as_json(body)["message"]
+    monkeypatch.undo()
+    # Origin は同じ tailnet のハブだけ
+    assert upload(app, tiny_png(), headers={"Origin": "https://evil.example"})[0] == 403
+    status, headers, _ = upload(app, tiny_png(), headers={"Origin": HUB})
+    assert status == 200 and headers["Access-Control-Allow-Origin"] == HUB
+
+
+def test_pc_image_is_pushed_to_phone_and_downloadable(app):
+    base, token = app.base, app.token
+    assert request(base, "/api/image")[0] == 401
+    assert request(base, "/api/image", token=token)[0] == 404  # まだ画像はない
+    # SSE を開いてから PC で画像をコピー（スクリーンショット）する
+    conn = http.client.HTTPConnection("127.0.0.1", app.port, timeout=5)
+    conn.request("GET", "/api/events?t=" + quote(token))
+    response = conn.getresponse()
+    read_sse_event(response)  # 初期状態
+    png = tiny_png(5, 4)
+    app.fake_clipboard.external_copy_image(png)
+    name, event = read_sse_event(response)
+    conn.close()
+    assert name == "clip" and event["kind"] == "image" and event["source"] == "pc" and event["text"] == ""
+    image = event["image"]
+    assert image["width"] == 5 and image["height"] == 4 and image["size"] == len(png) and image["type"] == "image/png"
+    status, headers, body = request(base, "/api/image?id=" + image["id"], token=token)
+    assert status == 200 and body == png and headers["Content-Type"] == "image/png"
+    assert "clipbridge-" + image["id"] + ".png" in headers["Content-Disposition"]
+    assert request(base, "/api/image?id=stale", token=token)[0] == 404
+    # 別の tailnet 由来の Origin には CORS ヘッダを付けない / ハブには付ける
+    assert "Access-Control-Allow-Origin" not in request(base, "/api/image", token=token, headers={"Origin": "https://evil.example"})[1]
+    assert request(base, "/api/image", token=token, headers={"Origin": HUB})[1]["Access-Control-Allow-Origin"] == HUB
+    # PC がテキストをコピーし直したら画像は消える
+    app.fake_clipboard.external_copy("text again")
+    deadline = time.time() + 2
+    while time.time() < deadline and app.current_image() is not None:
+        time.sleep(0.05)
+    assert app.current_image() is None
+    assert request(base, "/api/image", token=token)[0] == 404
+    assert as_json(request(base, "/api/clip", token=token)[2])["image"] is None
+
+
+def test_pc_image_too_large_or_unreadable_is_reported_without_preview(app, monkeypatch):
+    monkeypatch.setattr(server, "MAX_IMAGE_BYTES", 16)
+    app.fake_clipboard.external_copy_image(tiny_png(4, 4))
+    time.sleep(0.3)
+    clip = as_json(request(app.base, "/api/clip", token=app.token)[2])
+    assert clip["kind"] == "image" and clip["image"] is None
+    monkeypatch.undo()
+
+    def unreadable():
+        raise server.ClipboardError("読めない")
+
+    app.fake_clipboard.read_image = unreadable
+    app.fake_clipboard.external_copy_image(tiny_png(3, 3))
+    time.sleep(0.3)
+    clip = as_json(request(app.base, "/api/clip", token=app.token)[2])
+    assert clip["kind"] == "image" and clip["image"] is None
+
+
+def test_admin_opens_image_folder(app, tmp_path, monkeypatch):
+    app.image_dir = tmp_path / "img"
+    opened: list[Path] = []
+    monkeypatch.setattr(server, "open_folder", lambda path: opened.append(path))
+    status, _, body = request(app.base, "/pc/api/images/open", method="POST", json_body={}, headers={"X-ClipBridge": "1"})
+    assert status == 200 and as_json(body)["path"] == str(app.image_dir)
+    assert opened == [app.image_dir] and app.image_dir.is_dir()
+
+
+def test_clip_state_treats_images_by_id():
+    state = server.ClipState()
+    assert state.set("", "image", "pc", {"id": "a"}) is True
+    assert state.set("", "image", "pc", {"id": "a"}) is False
+    assert state.set("", "image", "pc", {"id": "b"}) is True
+    assert state.snapshot()["image"] == {"id": "b"}
+    assert state.set("hello", "text", "pc", {"id": "ignored"}) is True
+    assert state.snapshot()["image"] is None
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows のクリップボード実装")
+def test_windows_clipboard_image_round_trip(tmp_path):
+    clipboard = server.WindowsClipboard()
+    try:
+        original_text, original_kind = clipboard.read()
+    except server.ClipboardError as exc:
+        pytest.skip(f"clipboard is not readable right now: {exc}")
+    if original_kind not in ("text", "empty"):
+        pytest.skip("clipboard holds non-text content that could not be restored")
+    try:
+        png = tiny_png(6, 2)
+        clipboard.write_image(png)
+        assert clipboard.read() == ("", "image")
+        assert clipboard.read_image() == png  # PNG 形式も入れているのでそのまま戻る
+        # 壊れた PNG は拒否される（壊れた JPEG だと GDI+ が内部で SEH 例外を使うため faulthandler の表示が出る。動作は同じ）
+        with pytest.raises(server.ClipboardError):
+            clipboard.write_image(png[:30] + b"garbage" * 4)
+    finally:
+        clipboard.write(original_text if original_kind == "text" else "")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows のクリップボード実装")
+def test_windows_clipboard_applies_exif_orientation(tmp_path):
+    Image = pytest.importorskip("PIL.Image")
+    clipboard = server.WindowsClipboard()
+    try:
+        original_text, original_kind = clipboard.read()
+    except server.ClipboardError as exc:
+        pytest.skip(f"clipboard is not readable right now: {exc}")
+    if original_kind not in ("text", "empty"):
+        pytest.skip("clipboard holds non-text content that could not be restored")
+    buffer = io.BytesIO()
+    exif = Image.Exif()
+    exif[0x0112] = 6  # 90 度回転
+    Image.new("RGB", (40, 20), (0, 128, 255)).save(buffer, "JPEG", exif=exif)
+    try:
+        clipboard.write_image(buffer.getvalue())
+        back = clipboard.read_image()
+        assert back.startswith(server.PNG_SIGNATURE)
+        assert server.image_dimensions(back) == (20, 40)  # 貼り付け用のビットマップは回転済み
+    finally:
+        clipboard.write(original_text if original_kind == "text" else "")

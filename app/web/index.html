@@ -59,7 +59,13 @@
           <span id="clipMeta" class="meta"></span>
         </div>
         <pre id="clipText" class="cliptext empty" tabindex="0">（まだ何もありません）</pre>
+        <figure id="clipImageWrap" class="clipimage-wrap" hidden>
+          <img id="clipImage" class="clipimage" alt="PC のクリップボードの画像">
+          <figcaption id="clipImageNote" class="hint"></figcaption>
+        </figure>
         <button id="copyBtn" class="btn primary big" type="button">iPhone にコピー</button>
+        <p id="imageSaveHint" class="hint" hidden></p>
+        <button id="shareImageBtn" class="btn big" type="button" hidden>共有…（AirDrop・“ファイル”に保存など）</button>
         <textarea id="copyFallback" rows="3" readonly hidden aria-label="コピー用テキスト"></textarea>
         <p id="copyHint" class="hint" hidden>自動でコピーできませんでした。上の欄を長押しして「コピー」を選んでください。</p>
       </section>
@@ -67,10 +73,25 @@
       <section class="card" aria-labelledby="sendTitle">
         <h2 id="sendTitle">iPhone から PC へ</h2>
         <button id="sendBtn" class="btn big" type="button">iPhone のコピー内容を PC へ送る</button>
-        <p class="hint">「ペースト」の確認が出たらタップしてください（iOS の仕様です）。</p>
+        <p class="hint">コピーしたのが画像なら画像として送ります。「ペースト」の確認が出たらタップしてください（iOS の仕様です）。</p>
         <label class="label" for="sendText">または、ここに貼り付けると自動で送ります</label>
         <textarea id="sendText" rows="3" placeholder="長押し → ペースト"></textarea>
         <p id="sendMsg" class="msg" aria-live="polite"></p>
+      </section>
+
+      <section class="card" aria-labelledby="imageTitle">
+        <h2 id="imageTitle">写真・画像を PC へ</h2>
+        <input id="imageInput" type="file" accept="image/*" multiple hidden>
+        <button id="imageBtn" class="btn big" type="button">写真・画像を選んで送る</button>
+        <div id="imageProgress" class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><div id="imageBar" class="bar"></div></div>
+        <p id="imageMsg" class="msg" aria-live="polite"></p>
+        <p id="imageDetail" class="hint" hidden></p>
+        <p class="label">PC での受け取り方</p>
+        <div class="choice" role="radiogroup" aria-label="PC での受け取り方">
+          <label><input type="radio" name="imageMode" value="save" checked><span class="choice-text"><span class="choice-title">PC に保存する</span><span class="choice-sub">「ピクチャ › ClipBridge」に保存し、クリップボードにも入れます</span></span></label>
+          <label><input type="radio" name="imageMode" value="clip"><span class="choice-text"><span class="choice-title">クリップボードだけ</span><span class="choice-sub">保存せず、そのまま Ctrl+V で貼り付けられる状態にします</span></span></label>
+        </div>
+        <p class="hint">写真ライブラリ・カメラ・ファイルから選べます。HEIC の写真は iPhone 側で JPEG に変換して送ります。</p>
       </section>
 
       <section id="a2hs" class="card tip" hidden>
