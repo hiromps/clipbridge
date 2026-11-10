@@ -16,6 +16,24 @@
   </header>
 
   <main>
+    <section class="card" aria-labelledby="clipTitle">
+      <div class="card-head">
+        <h2 id="clipTitle">PC のクリップボード <span id="clipBadge" class="badge" hidden>iPhone から届きました</span></h2>
+        <span id="clipMeta" class="meta"></span>
+      </div>
+      <pre id="clipText" class="cliptext empty" tabindex="0">（読み込み中…）</pre>
+      <figure id="clipImageWrap" class="clipimage-wrap" hidden>
+        <img id="clipImage" class="clipimage" alt="PC のクリップボードの画像">
+      </figure>
+      <p class="hint">PC で Ctrl+C した内容と、iPhone から届いた内容が表示されます。iPhone の画面にも同じ内容が出ています。</p>
+      <label class="label" for="pcSendText">PC から iPhone へ文字を送る（クリップボードに入り、iPhone に「新着」として届きます）</label>
+      <div class="send-row">
+        <textarea id="pcSendText" rows="2" placeholder="ここに入力して「iPhone へ送る」"></textarea>
+        <button id="pcSendBtn" class="btn primary" type="button">iPhone へ送る</button>
+      </div>
+      <p id="pcSendMsg" class="msg" aria-live="polite"></p>
+    </section>
+
     <section class="card step" aria-labelledby="step1">
       <div class="step-head"><span class="num">1</span><h2 id="step1">Tailscale の確認</h2></div>
       <p class="lead">iPhone と PC を安全につなぐために Tailscale を使います。すべて緑になれば OK です。</p>

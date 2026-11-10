@@ -62,8 +62,20 @@
     licenseApplyBtn: $('licenseApplyBtn'),
     licenseRemoveBtn: $('licenseRemoveBtn'),
     proMsg: $('proMsg'),
+    clipBadge: $('clipBadge'),
+    clipMeta: $('clipMeta'),
+    clipText: $('clipText'),
+    clipImageWrap: $('clipImageWrap'),
+    clipImage: $('clipImage'),
+    pcSendText: $('pcSendText'),
+    pcSendBtn: $('pcSendBtn'),
+    pcSendMsg: $('pcSendMsg'),
     toast: $('toast'),
   };
+  let lastClipHash = null;
+  let clipFirstLoad = true;
+  let clipLoading = false;
+  let currentClip = null;
   let imageSettingsDirty = false;   // 入力中は poll で上書きしない
   let hotkeysDirty = false;
   let hotkeyRowsBuilt = false;
@@ -118,6 +130,84 @@
     if (!last.clipboard) notes.push('クリップボードには入れられませんでした');
     els.imageLast.textContent = `最後に受け取った画像: ${last.name}（${notes.join(' ・ ')}）`;
   }
+
+  // ---- PC のクリップボード（iPhone 画面と同じカード） ----------------------------
+  function clipMetaText(clip, now) {
+    const when = relativeTime(clip.updated, now);
+    const who = clip.source === 'phone' ? 'iPhone から' : 'PC でコピー';
+    if (clip.kind === 'image') {
+      const image = clip.image;
+      const dims = image && image.width && image.height ? `${image.width}×${image.height} ・ ` : '';
+      return `画像 ${dims}${image ? formatBytes(image.size) + ' ・ ' : ''}${who} ・ ${when}`;
+    }
+    if (clip.kind === 'text') return `${clip.length.toLocaleString()} 文字 ・ ${who} ・ ${when}`;
+    return when;
+  }
+
+  function renderClip(clip, now) {
+    const changed = clip.hash !== lastClipHash;
+    lastClipHash = clip.hash;
+    currentClip = clip;
+    const hasImage = clip.kind === 'image' && !!clip.image;
+    els.clipText.hidden = hasImage;
+    els.clipImageWrap.hidden = !hasImage;
+    if (clip.kind === 'text' && clip.text) {
+      els.clipText.textContent = clip.text;
+      els.clipText.classList.remove('empty');
+    } else if (clip.kind === 'image') {
+      els.clipText.textContent = '（画像が入っていますが、表示できる形式ではありません）';
+      els.clipText.classList.add('empty');
+      if (hasImage) els.clipImage.src = `/pc/api/clip/image?id=${encodeURIComponent(clip.image.id)}`;
+    } else {
+      els.clipText.textContent = clip.kind === 'other' ? '（文字でも画像でもない内容です）' : '（空です）';
+      els.clipText.classList.add('empty');
+    }
+    if (!hasImage) els.clipImage.removeAttribute('src');
+    els.clipMeta.textContent = clipMetaText(clip, now);
+    if (changed && !clipFirstLoad) {
+      els.clipBadge.hidden = clip.source !== 'phone';
+      const target = hasImage ? els.clipImageWrap : els.clipText;
+      target.classList.remove('flash');
+      void target.offsetWidth;
+      target.classList.add('flash');
+    }
+    clipFirstLoad = false;
+  }
+
+  async function loadClip(status) {
+    if (clipLoading) return;
+    clipLoading = true;
+    try {
+      const response = await fetch('/pc/api/clip', { cache: 'no-store' });
+      if (!response.ok) throw new Error(String(response.status));
+      renderClip(await response.json(), status.now);
+    } catch {
+      /* 次の poll で再試行 */
+    } finally {
+      clipLoading = false;
+    }
+  }
+
+  els.pcSendBtn.addEventListener('click', async () => {
+    const text = els.pcSendText.value;
+    if (!text.trim()) { els.pcSendMsg.textContent = '送る文字を入力してください。'; els.pcSendMsg.className = 'msg error'; return; }
+    els.pcSendBtn.disabled = true;
+    try {
+      const result = await adminPost('clip', { text });
+      els.pcSendText.value = '';
+      els.pcSendMsg.textContent = `iPhone へ送りました（${result.length.toLocaleString()} 文字）。iPhone の画面を開いていれば「新着」として届きます。`;
+      els.pcSendMsg.className = 'msg ok';
+      poll();
+    } catch (error) {
+      els.pcSendMsg.textContent = error.message;
+      els.pcSendMsg.className = 'msg error';
+    } finally {
+      els.pcSendBtn.disabled = false;
+    }
+  });
+  els.pcSendText.addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') els.pcSendBtn.click();
+  });
 
   // ---- Pro: ライセンス -----------------------------------------------------------
   function renderPro(status) {
@@ -508,6 +598,8 @@
     renderPro(status);
     renderHistory(status);
     renderHotkeys(status);
+    if (status.clip && status.clip.hash !== lastClipHash) loadClip(status);
+    else if (currentClip) els.clipMeta.textContent = clipMetaText(currentClip, status.now);
     els.publicUrl.textContent = status.public_url || status.planned_url || '—';
     els.pairCode.textContent = status.pair_code;
     renderQr(status.pair_url);
