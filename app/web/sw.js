@@ -6,7 +6,7 @@
  */
 const VERSION = '__VERSION__';
 const CACHE = 'clipbridge-shell-' + VERSION;
-const SHELL = ['/', '/style.css', '/app.js', '/icon-180.png', '/icon-512.png'];
+const SHELL = ['/', '/style.css', '/app.js', '/img/flow-overview.webp', '/img/add-to-home.webp', '/img/shortcut-setup.webp', '/img/done.webp', '/icon-180.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

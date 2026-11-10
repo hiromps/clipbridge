@@ -75,15 +75,17 @@
       <div id="devices" class="devices" aria-live="polite"><p class="waiting">iPhone からの接続を待っています…</p></div>
     </section>
 
-    <section class="card step steps" aria-labelledby="step3">
+    <section class="card step" aria-labelledby="step3">
       <div class="step-head"><span class="num">3</span><h2 id="step3">iPhone のホーム画面に追加（おすすめ）</h2></div>
-      <ol>
-        <li>接続後、Safari 下部の共有ボタンをタップ</li>
-        <li>「ホーム画面に追加」→「追加」</li>
-        <li>以後はホーム画面の ClipBridge を開くだけ（接続設定は引き継がれます）</li>
-      </ol>
-      <p class="hint">使い方: PC で Ctrl+C すると iPhone の画面に表示され「iPhone にコピー」で取り込めます。iPhone でコピーした文字は「PC へ送る」で PC のクリップボードに入ります。</p>
-      <p class="hint">接続直後に iPhone 側で「初回セットアップ」が開き、ホーム画面への追加と、アプリを開かずに PC へ送るショートカット（背面タップ・共有シート対応）を案内します。あとから見るには iPhone の「接続」カード →「セットアップガイド」。</p>
+      <figure class="illus-block">
+        <div class="illus-frame"><img class="illus" src="/img/add-to-home.webp" width="1200" height="800" alt="Safari の共有ボタン → ホーム画面に追加 → ホーム画面にアイコンが並ぶ" decoding="async"></div>
+        <figcaption class="illus-caps num">
+          <span><b>1</b>Safari の共有ボタン</span>
+          <span><b>2</b>「ホーム画面に追加」</span>
+          <span><b>3</b>「追加」を押すと完成</span>
+        </figcaption>
+      </figure>
+      <p class="hint">以後はホーム画面のアイコンから開くだけ（接続設定は引き継がれます）。接続直後は iPhone 側に「初回セットアップ」が開き、この手順と、アプリを開かずに PC へ送るショートカットを図で案内します。あとから見るには iPhone の「接続」カード →「セットアップガイド」。</p>
     </section>
 
     <section class="card" aria-labelledby="imagesTitle">
@@ -91,7 +93,13 @@
         <h2 id="imagesTitle">画像の受け渡し</h2>
         <span id="imageLast" class="meta"></span>
       </div>
-      <p class="lead">iPhone の「写真・画像を PC へ」で送った画像は、この PC のクリップボードに入ります（Ctrl+V で貼り付け）。iPhone 側で「PC に保存する」を選ぶと下のフォルダーにも保存されます。PC で画像をコピーする（Win+Shift+S のスクリーンショットなど）と iPhone の画面に表示され、iPhone にコピーしたり、長押しで写真に保存したりできます。</p>
+      <figure class="illus-block">
+        <div class="illus-frame"><img class="illus" src="/img/image-transfer.webp" width="1200" height="800" alt="iPhone の写真は PC のクリップボードかフォルダーへ、PC でコピーした画像は iPhone の写真へ" decoding="async"></div>
+        <figcaption class="illus-caps two">
+          <span><b>iPhone → PC</b>この PC のクリップボードに入ります（Ctrl+V）。「PC に保存する」を選ぶと下のフォルダーにも保存</span>
+          <span><b>PC → iPhone</b>画像をコピー（Win+Shift+S など）すると iPhone に表示。長押しで写真に保存</span>
+        </figcaption>
+      </figure>
       <div class="kv">
         <label class="label" for="imageDirInput">保存先フォルダー</label>
         <input id="imageDirInput" class="text-input" type="text" spellcheck="false" placeholder="C:\Users\you\Pictures\ClipBridge">
@@ -152,12 +160,37 @@
         <span id="proPill" class="pill">無料版</span>
       </div>
       <p id="proLead" class="lead">1 人分のライセンスで、お持ちの PC 何台でも使えます。</p>
-      <ul id="proFeatures" class="pro-features">
-        <li><span class="icon" data-feature="unlimited_pcs">🔒</span><span>3 台目以降の PC を iPhone に登録（無料版は 2 台まで）</span></li>
-        <li><span class="icon" data-feature="history">🔒</span><span>クリップボードの履歴 100 件: 検索・再送・ピン留め（iPhone からも）</span></li>
-        <li><span class="icon" data-feature="image_rules">🔒</span><span>画像の保存ルール: 日付フォルダー、ファイル名のテンプレート</span></li>
-        <li><span class="icon" data-feature="hotkeys">🔒</span><span>PC 側ホットキー: 画面を開く、iPhone から届いた内容を戻す、履歴を遡る</span></li>
-        <li><span class="icon" data-feature="support">🔒</span><span>優先サポート（ライセンス ID つきで優先して対応）</span></li>
+      <ul id="proFeatures" class="pro-grid">
+        <li class="pro-tile">
+          <span class="state" data-feature="unlimited_pcs">🔒</span>
+          <img class="pro-icon" src="/img/pro-pcs.webp" width="320" height="307" alt="" decoding="async">
+          <span class="t">PC 3 台目以降</span>
+          <span class="s">iPhone に何台でも登録（無料版は 2 台まで）</span>
+        </li>
+        <li class="pro-tile">
+          <span class="state" data-feature="history">🔒</span>
+          <img class="pro-icon" src="/img/pro-history.webp" width="320" height="307" alt="" decoding="async">
+          <span class="t">履歴 100 件</span>
+          <span class="s">検索・再送・ピン留め（iPhone からも）</span>
+        </li>
+        <li class="pro-tile">
+          <span class="state" data-feature="image_rules">🔒</span>
+          <img class="pro-icon" src="/img/pro-images.webp" width="320" height="307" alt="" decoding="async">
+          <span class="t">画像の保存ルール</span>
+          <span class="s">日付フォルダー・ファイル名のテンプレート</span>
+        </li>
+        <li class="pro-tile">
+          <span class="state" data-feature="hotkeys">🔒</span>
+          <img class="pro-icon" src="/img/pro-hotkeys.webp" width="320" height="307" alt="" decoding="async">
+          <span class="t">ホットキー</span>
+          <span class="s">画面を開く・届いた内容を戻す・履歴を遡る</span>
+        </li>
+        <li class="pro-tile">
+          <span class="state" data-feature="support">🔒</span>
+          <img class="pro-icon" src="/img/pro-support.webp" width="320" height="307" alt="" decoding="async">
+          <span class="t">優先サポート</span>
+          <span class="s">ライセンス ID つきで優先して対応</span>
+        </li>
       </ul>
       <div id="proApply">
         <label class="label" for="licenseInput">ライセンスキー</label>

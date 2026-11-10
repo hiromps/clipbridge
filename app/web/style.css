@@ -361,8 +361,12 @@ a.btn { text-decoration: none; }
 .btn.small.on { background: var(--accent-soft); border-color: var(--accent); }
 .history-thumb { max-width: 100%; max-height: 180px; border-radius: 8px; justify-self: start; }
 .history-empty { color: var(--muted); font-size: 0.92rem; padding: 6px 2px; }
-.pro-features { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.pro-features li { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; align-items: start; font-size: 0.95rem; }
+.pro-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.pro-tile { position: relative; display: grid; gap: 3px; align-content: start; padding: 14px 12px 12px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); min-width: 0; }
+.pro-tile .pro-icon { width: 76px; height: auto; margin-bottom: 6px; border-radius: 12px; background: #fff; }
+.pro-tile .t { font-weight: 600; font-size: 0.95rem; }
+.pro-tile .s { color: var(--muted); font-size: 0.8rem; overflow-wrap: anywhere; }
+.pro-tile .state { position: absolute; top: 9px; right: 10px; font-size: 0.9rem; }
 .kv { display: grid; grid-template-columns: minmax(0, 260px) minmax(0, 1fr); gap: 8px 12px; align-items: center; }
 .kv .label { font-size: 0.92rem; }
 .kv .text-input, .kv select { min-height: 40px; padding: 6px 10px; }
@@ -388,6 +392,18 @@ select.text-input { appearance: auto; }
 .kv-copy .btn { grid-column: 2; grid-row: span 1; }
 .kv-copy .btn + .btn { grid-column: 2; }
 .kv-copy code.secret[data-masked="1"] { letter-spacing: 0.15em; color: var(--muted); }
+/* 図解（web/img/*.webp。背景は明るい地色で描かれているので、ダークでも枠ごと明るいパネルとして見せる）と、その下の短い説明 */
+.illus-frame { width: 100%; max-width: 560px; margin: 0 auto; border-radius: 14px; overflow: hidden; background: #f4f6fa; }
+.illus-frame.square { max-width: 420px; }
+.illus { display: block; width: 100%; height: auto; }
+.illus-block { margin: 0; display: grid; gap: 10px; }
+.illus-caps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 8px; text-align: center; font-size: clamp(0.78rem, 3.3vw, 0.85rem); line-height: 1.35; color: var(--muted); }
+.illus-caps > * { display: grid; gap: 4px; justify-items: center; min-width: 0; overflow-wrap: anywhere; }
+.illus-caps b { color: var(--text); font-weight: 600; }
+.illus-caps.num b { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-size: 0.8rem; display: inline-grid; place-items: center; }
+.illus-caps.two { grid-template-columns: repeat(2, minmax(0, 1fr)); text-align: left; gap: 10px 14px; }
+.illus-caps.two > * { justify-items: start; }
+@media (max-width: 440px) { .illus-caps.two { grid-template-columns: 1fr; } }
 .onboard-nav { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .onboard-nav .btn { flex: 1 1 120px; min-height: 52px; }
 .onboard-nav .link { flex-basis: 100%; text-align: center; padding: 8px; }

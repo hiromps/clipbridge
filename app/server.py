@@ -52,7 +52,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-__version__ = "2.5.0"
+__version__ = "2.6.0"
 APP_NAME = "ClipBridge"
 FROZEN = bool(getattr(sys, "frozen", False))  # PyInstaller でビルドした exe 版か
 ROOT = Path(__file__).resolve().parent
@@ -2739,6 +2739,11 @@ def make_handler(app: ClipBridgeApp):
                 return self._serve_manifest(query)
             if path in STATIC_FILES:
                 return self._file(*STATIC_FILES[path])
+            image = re.fullmatch(r"/img/([a-z0-9-]+)\.(png|webp|svg)", path)
+            if image:
+                # 説明用の図解（web/img/ 配下、名前は英小文字・数字・ハイフンのみ）
+                content_type = {"png": "image/png", "webp": "image/webp", "svg": "image/svg+xml"}[image.group(2)]
+                return self._file(f"img/{image.group(1)}.{image.group(2)}", content_type)
             if path.startswith("/apple-touch-icon") and path.endswith(".png"):
                 # iOS Safari が慣例的に探しに来るサイズ違いのアイコン名をまとめて返す
                 return self._file("icon-180.png", "image/png")
