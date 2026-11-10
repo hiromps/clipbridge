@@ -20,3 +20,8 @@ _legacy_v1/
 .openai/
 node_modules/
 .env*
+
+# Pro の履歴（クリップボードの内容を含む。共有しない）
+app/history.json
+app/history.json.tmp
+app/history/

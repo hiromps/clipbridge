@@ -60,11 +60,87 @@
         <span id="imageLast" class="meta"></span>
       </div>
       <p class="lead">iPhone の「写真・画像を PC へ」で送った画像は、この PC のクリップボードに入ります（Ctrl+V で貼り付け）。iPhone 側で「PC に保存する」を選ぶと下のフォルダーにも保存されます。PC で画像をコピーする（Win+Shift+S のスクリーンショットなど）と iPhone の画面に表示され、iPhone にコピーしたり、長押しで写真に保存したりできます。</p>
-      <p class="hint">保存先: <code id="imageDir">—</code></p>
+      <div class="kv">
+        <label class="label" for="imageDirInput">保存先フォルダー</label>
+        <input id="imageDirInput" class="text-input" type="text" spellcheck="false" placeholder="C:\Users\you\Pictures\ClipBridge">
+        <label class="label" for="imageSubfolder">サブフォルダー <span class="badge pro">Pro</span></label>
+        <select id="imageSubfolder" class="text-input">
+          <option value="none">分けない</option>
+          <option value="date">日付ごと（2026-11-10）</option>
+          <option value="month">月ごと（2026-11）</option>
+        </select>
+        <label class="label" for="imageTemplate">ファイル名 <span class="badge pro">Pro</span></label>
+        <input id="imageTemplate" class="text-input" type="text" spellcheck="false" placeholder="{date}-{time}-{name}">
+      </div>
+      <p class="hint">使える項目: <code>{date}</code> <code>{time}</code> <code>{datetime}</code> <code>{year}</code> <code>{month}</code> <code>{day}</code> <code>{name}</code>（元のファイル名） <code>{pc}</code>。例: <code id="imageExample">—</code></p>
+      <p id="imageRulesLock" class="lock-note" hidden>サブフォルダーとファイル名の変更は Pro で有効になります（入力は保存されます）。</p>
       <div class="actions">
+        <button id="imageSettingsBtn" class="btn primary" type="button">保存ルールを保存</button>
         <button id="openImagesBtn" class="btn" type="button">保存フォルダーを開く</button>
       </div>
-      <p class="hint">保存先を変えるには、設定ファイルに <code>"image_dir": "D:/ClipBridge"</code> のように追加して再起動します。</p>
+      <p id="imageSettingsMsg" class="msg" aria-live="polite"></p>
+    </section>
+
+    <section class="card" aria-labelledby="historyTitle">
+      <div class="card-head">
+        <h2 id="historyTitle">クリップボードの履歴 <span class="badge pro">Pro</span></h2>
+        <span id="historyCount" class="meta"></span>
+      </div>
+      <p id="historyLock" class="lock-note" hidden>直近 100 件の履歴（検索・再送・ピン留め）は Pro で使えます。</p>
+      <div id="historyBody" class="history-body" hidden>
+        <label class="switch" for="historyToggle"><input id="historyToggle" type="checkbox"><span>履歴を記録する（この PC の設定ファイルに保存されます）</span></label>
+        <input id="historySearch" class="text-input" type="search" placeholder="履歴を検索" autocomplete="off" aria-label="履歴を検索">
+        <ul id="historyList" class="history-list"></ul>
+        <div class="actions">
+          <button id="historyClearBtn" class="btn danger" type="button">ピン留め以外を消去</button>
+        </div>
+        <p id="historyMsg" class="msg" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="hotkeyTitle">
+      <div class="card-head">
+        <h2 id="hotkeyTitle">ホットキー <span class="badge pro">Pro</span></h2>
+        <span id="hotkeyState" class="meta"></span>
+      </div>
+      <p class="lead">どのアプリを使っていても、キー操作で ClipBridge を呼び出せます（Windows のみ）。</p>
+      <p id="hotkeyLock" class="lock-note" hidden>ホットキーは Pro で使えます。</p>
+      <div id="hotkeyBody" hidden>
+        <label class="switch" for="hotkeyToggle"><input id="hotkeyToggle" type="checkbox"><span>ホットキーを有効にする</span></label>
+        <div id="hotkeyRows" class="kv"></div>
+        <p class="hint">書き方: <code>Ctrl+Alt+V</code> のように、Ctrl / Alt / Shift / Win と、文字・数字・F キー・矢印などを + でつなぎます。</p>
+        <div class="actions"><button id="hotkeySaveBtn" class="btn primary" type="button">ホットキーを保存</button></div>
+        <p id="hotkeyMsg" class="msg" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="proTitle">
+      <div class="card-head">
+        <h2 id="proTitle">ClipBridge Pro</h2>
+        <span id="proPill" class="pill">無料版</span>
+      </div>
+      <p id="proLead" class="lead">1 人分のライセンスで、お持ちの PC 何台でも使えます。</p>
+      <ul id="proFeatures" class="pro-features">
+        <li><span class="icon" data-feature="unlimited_pcs">🔒</span><span>3 台目以降の PC を iPhone に登録（無料版は 2 台まで）</span></li>
+        <li><span class="icon" data-feature="history">🔒</span><span>クリップボードの履歴 100 件: 検索・再送・ピン留め（iPhone からも）</span></li>
+        <li><span class="icon" data-feature="image_rules">🔒</span><span>画像の保存ルール: 日付フォルダー、ファイル名のテンプレート</span></li>
+        <li><span class="icon" data-feature="hotkeys">🔒</span><span>PC 側ホットキー: 画面を開く、iPhone から届いた内容を戻す、履歴を遡る</span></li>
+        <li><span class="icon" data-feature="support">🔒</span><span>優先サポート（ライセンス ID つきで優先して対応）</span></li>
+      </ul>
+      <div id="proApply">
+        <label class="label" for="licenseInput">ライセンスキー</label>
+        <textarea id="licenseInput" rows="3" placeholder="CBP1. で始まるキーを貼り付け" spellcheck="false" autocapitalize="off"></textarea>
+        <div class="actions"><button id="licenseApplyBtn" class="btn primary" type="button">ライセンスを適用</button></div>
+      </div>
+      <div id="proInfo" hidden>
+        <p id="proHolder" class="hint"></p>
+        <div class="actions">
+          <a id="supportMailBtn" class="btn" href="#" hidden>優先サポートにメール</a>
+          <a id="supportIssueBtn" class="btn" href="#" target="_blank" rel="noopener noreferrer">優先サポート（GitHub）↗</a>
+          <button id="licenseRemoveBtn" class="btn ghost danger" type="button">この PC からライセンスを外す</button>
+        </div>
+      </div>
+      <p id="proMsg" class="msg" aria-live="polite"></p>
     </section>
 
     <section class="card" aria-labelledby="updateTitle">

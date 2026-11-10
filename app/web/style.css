@@ -346,3 +346,28 @@ a.btn { text-decoration: none; }
 .choice-text { display: grid; gap: 1px; min-width: 0; }
 .choice-title { font-weight: 700; }
 .choice-sub { color: var(--muted); font-size: 0.85rem; }
+
+/* Pro（ライセンス / 履歴 / 保存ルール / ホットキー） */
+.badge.pro { background: var(--accent-soft); color: var(--accent); animation: none; }
+.history-body { display: grid; gap: 10px; min-width: 0; }
+.history-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.history-item { display: grid; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); min-width: 0; }
+.history-item.pinned { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.history-text { margin: 0; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.history-text.expanded { display: block; max-height: 40vh; overflow: auto; }
+.history-meta { color: var(--muted); font-size: 0.8rem; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.history-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.btn.small { min-height: 36px; padding: 6px 12px; font-size: 0.9rem; border-radius: 10px; }
+.btn.small.on { background: var(--accent-soft); border-color: var(--accent); }
+.history-thumb { max-width: 100%; max-height: 180px; border-radius: 8px; justify-self: start; }
+.history-empty { color: var(--muted); font-size: 0.92rem; padding: 6px 2px; }
+.pro-features { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.pro-features li { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; align-items: start; font-size: 0.95rem; }
+.kv { display: grid; grid-template-columns: minmax(0, 260px) minmax(0, 1fr); gap: 8px 12px; align-items: center; }
+.kv .label { font-size: 0.92rem; }
+.kv .text-input, .kv select { min-height: 40px; padding: 6px 10px; }
+select.text-input { appearance: auto; }
+.lock-note { color: var(--warn); font-size: 0.88rem; }
+@media (max-width: 480px) {
+  .kv { grid-template-columns: minmax(0, 1fr); }
+}

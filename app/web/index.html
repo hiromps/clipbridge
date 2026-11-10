@@ -94,6 +94,22 @@
         <p class="hint">写真ライブラリ・カメラ・ファイルから選べます。HEIC の写真は iPhone 側で JPEG に変換して送ります。</p>
       </section>
 
+      <section id="historyCard" class="card" aria-labelledby="historyTitle">
+        <div class="card-head">
+          <h2 id="historyTitle">履歴 <span class="badge pro">Pro</span></h2>
+          <span id="historyMeta" class="meta"></span>
+        </div>
+        <div id="historyLocked">
+          <p class="hint">クリップボードの履歴（直近 100 件の検索・再送・ピン留め）は ClipBridge Pro の機能です。PC のセットアップ画面でライセンスを適用すると使えます。</p>
+        </div>
+        <div id="historyBody" class="history-body" hidden>
+          <input id="historySearch" class="text-input" type="search" placeholder="履歴を検索" autocomplete="off" autocapitalize="off" aria-label="履歴を検索">
+          <ul id="historyList" class="history-list"></ul>
+          <p id="historyMsg" class="msg" aria-live="polite"></p>
+          <p class="hint">「PC へ戻す」で PC のクリップボードに入れ直します。ピン留めした項目は 100 件を超えても残ります。</p>
+        </div>
+      </section>
+
       <section id="a2hs" class="card tip" hidden>
         <h2>ホーム画面に追加するとアプリのように使えます</h2>
         <ol>

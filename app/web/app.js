@@ -48,6 +48,13 @@
     imageBar: $('imageBar'),
     imageMsg: $('imageMsg'),
     imageDetail: $('imageDetail'),
+    historyCard: $('historyCard'),
+    historyMeta: $('historyMeta'),
+    historyLocked: $('historyLocked'),
+    historyBody: $('historyBody'),
+    historySearch: $('historySearch'),
+    historyList: $('historyList'),
+    historyMsg: $('historyMsg'),
     a2hs: $('a2hs'),
     pcName: $('pcName'),
     unpairBtn: $('unpairBtn'),
@@ -194,7 +201,9 @@
     els.pcName.textContent = active ? `接続先: ${displayName(active)}` : '';
     els.a2hs.hidden = !(isIOS && !standalone);
     renderPcList();
+    renderHistoryState();
     connect();
+    if (active && active.pro) loadHistory(true);
   }
 
   function resetClip() {
@@ -217,6 +226,9 @@
     els.sendMsg.className = 'msg';
     setImageMsg('');
     els.imageDetail.hidden = true;
+    els.historyList.innerHTML = '';
+    els.historyMsg.textContent = '';
+    renderHistoryState();
   }
 
   function switchTo(origin) {
@@ -519,6 +531,15 @@
     els.addMsg.textContent = `${addTarget.name} に接続しています…`;
     els.addMsg.className = 'msg';
     try {
+      // 3 台目以降は Pro（追加したい PC 側でライセンスが有効なこと）
+      if (pcs.filter((pc) => pc.origin !== addTarget.origin).length >= FREE_PC_LIMIT) {
+        const health = await fetchHealth(addTarget.origin);
+        if (!health || !health.pro) {
+          els.addMsg.textContent = `3 台目以降の PC を追加するには ClipBridge Pro が必要です。${addTarget.name} のセットアップ画面でライセンスを適用してから、もう一度お試しください。`;
+          els.addMsg.className = 'msg error';
+          return;
+        }
+      }
       const data = await pairWith(addTarget.origin, code);
       const pc = upsertPc({ origin: addTarget.origin, name: data.pc_name || addTarget.name, token: data.token });
       toast(`${displayName(pc)} を追加しました`);
@@ -982,6 +1003,146 @@
     els.imageInput.value = '';
   });
 
+  // ---- Pro: 履歴（直近 100 件の検索・再送・ピン留め） -------------------------------
+  const FREE_PC_LIMIT = 2;
+  let historyTimer = null;
+  let historyRequest = 0;
+
+  async function fetchHealth(origin) {
+    try {
+      const response = await fetch(origin + '/api/health', { cache: 'no-store', mode: 'cors' });
+      return response.ok ? await response.json() : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function renderHistoryState() {
+    const pro = !!(active && active.pro);
+    els.historyLocked.hidden = pro;
+    els.historyBody.hidden = !pro;
+    if (!pro) els.historyMeta.textContent = '';
+  }
+
+  function setHistoryMsg(text, kind = '') {
+    els.historyMsg.textContent = text;
+    els.historyMsg.className = 'msg ' + kind;
+  }
+
+  async function fetchBlob(pc, path) {
+    const response = await fetch(pc.origin + path, { cache: 'no-store', mode: 'cors', headers: { 'X-Token': pc.token || '' } });
+    if (!response.ok) throw new Error('取得できませんでした');
+    return response.blob();
+  }
+
+  function historyItem(entry, pc) {
+    const li = document.createElement('li');
+    li.className = 'history-item' + (entry.pinned ? ' pinned' : '');
+    let thumb = null;
+    if (entry.kind === 'image') {
+      const label = document.createElement('p');
+      label.className = 'history-text';
+      label.textContent = `画像 ${entry.width}×${entry.height} ・ ${formatBytes(entry.size)}`;
+      li.append(label);
+    } else {
+      const text = document.createElement('pre');
+      text.className = 'history-text';
+      text.textContent = entry.text + (entry.truncated ? ' …' : '');
+      text.addEventListener('click', () => text.classList.toggle('expanded'));
+      li.append(text);
+    }
+    const meta = document.createElement('div');
+    meta.className = 'history-meta';
+    meta.textContent = [
+      entry.source === 'phone' ? 'iPhone から' : 'PC でコピー',
+      relativeTime(entry.created),
+      entry.kind === 'text' ? `${entry.length.toLocaleString()} 文字` : '',
+      entry.pinned ? 'ピン留め' : '',
+    ].filter(Boolean).join(' ・ ');
+    const actions = document.createElement('div');
+    actions.className = 'history-actions';
+    const button = (label, className, handler) => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'btn small ' + className;
+      el.textContent = label;
+      el.addEventListener('click', async () => {
+        el.disabled = true;
+        try { await handler(el); } catch (error) { setHistoryMsg(error.message, 'error'); } finally { el.disabled = false; }
+      });
+      return el;
+    };
+    actions.append(button('PC へ戻す', 'primary', async () => {
+      await api(`/api/history/${entry.id}/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }, pc);
+      vibrate();
+      toast(`${displayName(pc)} のクリップボードに戻しました`);
+    }));
+    if (entry.kind === 'text') {
+      actions.append(button('iPhone にコピー', '', async () => {
+        let text = entry.text;
+        if (entry.truncated) text = (await api(`/api/history/${entry.id}`, {}, pc)).text;
+        if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('このブラウザーではコピーできません');
+        await navigator.clipboard.writeText(text);
+        vibrate();
+        toast('iPhone にコピーしました');
+      }));
+    } else {
+      actions.append(button('表示', '', async (el) => {
+        if (thumb) { thumb.remove(); thumb = null; el.textContent = '表示'; return; }
+        const blob = await fetchBlob(pc, `/api/history/${entry.id}/image`);
+        thumb = document.createElement('img');
+        thumb.className = 'history-thumb';
+        thumb.alt = '履歴の画像';
+        thumb.src = URL.createObjectURL(blob);
+        li.insertBefore(thumb, meta);
+        el.textContent = '閉じる';
+      }));
+    }
+    actions.append(button(entry.pinned ? 'ピン留め解除' : 'ピン留め', entry.pinned ? 'on' : '', async () => {
+      await api(`/api/history/${entry.id}/pin`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pinned: !entry.pinned }) }, pc);
+      loadHistory(true);
+    }));
+    actions.append(button('削除', 'danger', async () => {
+      await api(`/api/history/${entry.id}/delete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }, pc);
+      loadHistory(true);
+    }));
+    li.append(meta, actions);
+    return li;
+  }
+
+  async function loadHistory(force = false) {
+    const pc = active;
+    if (!pc || !pc.pro || els.mainView.hidden) return;
+    const request = ++historyRequest;
+    const query = els.historySearch.value.trim();
+    try {
+      const data = await api('/api/history?q=' + encodeURIComponent(query) + '&limit=50', {}, pc);
+      if (request !== historyRequest || !active || active.origin !== pc.origin) return; // 古い応答は捨てる
+      els.historyList.innerHTML = '';
+      if (!data.items.length) {
+        const empty = document.createElement('li');
+        empty.className = 'history-empty';
+        empty.textContent = query ? '一致する項目がありません。' : 'まだ履歴がありません。PC でコピーするか、ここから送ると記録されます。';
+        els.historyList.appendChild(empty);
+      }
+      for (const entry of data.items) els.historyList.appendChild(historyItem(entry, pc));
+      els.historyMeta.textContent = `${data.total} 件 ・ ピン留め ${data.pinned}`;
+      setHistoryMsg('');
+    } catch (error) {
+      if (force || !els.historyList.children.length) setHistoryMsg(error.message, 'error');
+    }
+  }
+
+  function scheduleHistoryRefresh() {
+    clearTimeout(historyTimer);
+    historyTimer = setTimeout(() => loadHistory(false), 700);
+  }
+
+  els.historySearch.addEventListener('input', () => {
+    clearTimeout(historyTimer);
+    historyTimer = setTimeout(() => loadHistory(true), 300);
+  });
+
   // ---- SSE 接続 ----------------------------------------------------------------
   function connect() {
     if (!active || eventSource) return;
@@ -991,22 +1152,25 @@
     eventSource.addEventListener('open', () => setConn('ok', '接続中', pc));
     eventSource.addEventListener('clip', (event) => {
       try { render(JSON.parse(event.data)); } catch { /* ignore */ }
+      scheduleHistoryRefresh();
     });
     eventSource.addEventListener('error', async () => {
       setConn('warn', '再接続中…', pc);
       // EventSource からは 401 を判別できないため、通常の API で確認する
       try { await api('/api/clip', {}, pc); } catch { /* 解除済み or 一時的な切断（オフライン表示は api 側） */ }
     });
-    if (!pc.name) {
-      fetch(pc.origin + '/api/health', { cache: 'no-store', mode: 'cors' })
-        .then((response) => response.json())
-        .then((data) => {
-          if (!data.pc_name) return;
-          const updated = upsertPc({ origin: pc.origin, name: data.pc_name });
-          if (active && active.origin === pc.origin) { active = updated; showMainLabels(); } // 使用中の PC の表示名も更新する
-        })
-        .catch(() => {});
-    }
+    // PC 名と Pro の状態を取り直す（Pro はライセンス適用で変わる）
+    fetchHealth(pc.origin).then((data) => {
+      if (!data) return;
+      const updated = upsertPc({ origin: pc.origin, name: data.pc_name || pc.name || '', pro: !!data.pro });
+      if (active && active.origin === pc.origin) {
+        const becamePro = !!data.pro && !pc.pro;
+        active = updated; // 使用中の PC の表示名・Pro 状態も更新する
+        showMainLabels();
+        renderHistoryState();
+        if (becamePro || (data.pro && !els.historyList.children.length)) loadHistory(true);
+      }
+    });
   }
 
   function showMainLabels() {
