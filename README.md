@@ -57,6 +57,11 @@ python -m http.server 8080 --directory dist   # 紹介サイトをローカル�
   git commit -am "Point legacy update feed at 2.1.0" ; git push
   ```
 
+## ClipBridge Pro（有料機能）
+
+無料版はテキストと画像の双方向・PC 2 台まで。Pro（1 人分のライセンスで PC 何台でも）で、3 台目以降の PC、クリップボードの履歴 100 件（検索・再送・ピン留め）、画像の保存ルール、PC 側ホットキー、優先サポートが使えます。
+ライセンスキーは `scripts/license_tool.py` で発行し（秘密鍵はリポジトリの外に置く）、アプリは埋め込んだ公開鍵でオフライン検証します。詳細は `app/README.md` の「ClipBridge Pro」を参照。
+
 ## 安全性
 
 - サーバーは `127.0.0.1` だけで待ち受け、iPhone からは Tailscale Serve（tailnet 内限定の HTTPS）経由で届きます

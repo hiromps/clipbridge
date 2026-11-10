@@ -28,6 +28,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import concurrent.futures
 import hashlib
 import hmac
@@ -51,7 +52,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-__version__ = "2.2.0"
+__version__ = "2.3.0"
 APP_NAME = "ClipBridge"
 FROZEN = bool(getattr(sys, "frozen", False))  # PyInstaller でビルドした exe 版か
 ROOT = Path(__file__).resolve().parent
@@ -564,6 +565,435 @@ def open_folder(path: Path) -> None:
         subprocess.Popen(["open", str(path)])
     else:
         subprocess.Popen(["xdg-open", str(path)])
+
+
+# ---------------------------------------------------------------------------
+# Pro ライセンス（オフライン検証: RSA-2048 / PKCS#1 v1.5 / SHA-256。秘密鍵は販売者だけが持つ）
+# ---------------------------------------------------------------------------
+
+# scripts/license_tool.py keygen の出力（公開鍵）。秘密鍵はリポジトリに入れない
+LICENSE_PUBLIC_KEY: dict = {
+    "n": (
+        "9b29755fdd813be92ae1e724775dd1a08d79693a697950ac1159d068d49a4616aa92c2bf70c26b6e3894e08636a656a19426870af8d16b6de63eeafd3c11de2c"
+        "d530c6b7d3dd91bba4fded1201a9fe844fcedadda6505c300fc7b85a87c6c9a585a3698903523cce95d230ae3609139d7c27aaa23c224ac4012a55ab7cad9a39"
+        "81fc29edc4651a34a3f53816265f64aefd2590e79af3f4c7df9824a3e397e9e057097920085aa66648d98d66fe2d08b76c1837aef984d672093c550fcc8d778c"
+        "c2acd190127e5587911c4a2db5787babc7328b0a05e02357c42c100e6cba8b760a6c61b78bbdbdaa24781071ddef67095e0aacc10428c73f11dfb9c47d5be3ad"
+    ),
+    "e": 65537,
+}
+LICENSE_PREFIX = "CBP1."
+SHA256_DIGEST_INFO = bytes.fromhex("3031300d060960864801650304020105000420")
+PRO_FEATURES = ("unlimited_pcs", "history", "image_rules", "hotkeys", "support")
+SUPPORT_EMAIL = ""  # 優先サポートの宛先。空なら GitHub Issues だけを案内する
+SUPPORT_URL = f"{REPO_URL}/issues/new?labels=priority-support"
+
+
+def _b64url_decode(value: str) -> bytes:
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
+
+def rsa_verify(message: bytes, signature: bytes, public: dict) -> bool:
+    """RSASSA-PKCS1-v1_5（SHA-256）の検証。標準ライブラリの pow だけで済ませる。"""
+    try:
+        n = int(public["n"], 16) if isinstance(public["n"], str) else int(public["n"])
+        e = int(public["e"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    size = (n.bit_length() + 7) // 8
+    if n <= 0 or len(signature) != size:
+        return False
+    decrypted = pow(int.from_bytes(signature, "big"), e, n).to_bytes(size, "big")
+    digest_info = SHA256_DIGEST_INFO + hashlib.sha256(message).digest()
+    expected = b"\x00\x01" + b"\xff" * (size - len(digest_info) - 3) + b"\x00" + digest_info
+    return hmac.compare_digest(decrypted, expected)
+
+
+def parse_license(key: str | None, public: dict | None = None, now: float | None = None) -> dict:
+    """ライセンスキー（CBP1.<payload>.<signature>）を検証して内容を返す。valid=False のときは error に理由。"""
+    public = public or LICENSE_PUBLIC_KEY
+    result: dict = {
+        "valid": False, "error": None, "id": None, "email": None, "name": None,
+        "plan": None, "issued": None, "expires": None,
+    }
+    key = (key or "").strip()
+    if not key:
+        result["error"] = "ライセンスキーが入力されていません"
+        return result
+    if not key.startswith(LICENSE_PREFIX) or key.count(".") != 2:
+        result["error"] = "ライセンスキーの形式が違います（CBP1. で始まる 3 区切りの文字列です）"
+        return result
+    try:
+        _, payload_b64, signature_b64 = key.split(".")
+        payload = _b64url_decode(payload_b64)
+        signature = _b64url_decode(signature_b64)
+        data = json.loads(payload.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        result["error"] = "ライセンスキーを読み取れません"
+        return result
+    if not isinstance(data, dict) or data.get("product") != "clipbridge":
+        result["error"] = "この製品のライセンスではありません"
+        return result
+    if not public.get("n") or not rsa_verify(payload, signature, public):
+        result["error"] = "署名を確認できません（キーが改変されているか、別の発行元です）"
+        return result
+    for field in ("id", "email", "name", "plan", "issued", "expires"):
+        value = data.get(field)
+        result[field] = value if isinstance(value, str) or value is None else str(value)
+    if result["expires"]:
+        try:
+            deadline = time.mktime(time.strptime(result["expires"], "%Y-%m-%d")) + 86400
+        except (ValueError, OverflowError):
+            result["error"] = "有効期限の形式が不正です"
+            return result
+        if (now if now is not None else time.time()) > deadline:
+            result["error"] = f"ライセンスの有効期限（{result['expires']}）が切れています"
+            return result
+    if result["plan"] != "pro":
+        result["error"] = "Pro のライセンスではありません"
+        return result
+    result["valid"] = True
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Pro: クリップボード履歴（直近 100 件 + ピン留め。JSON と画像ファイルに保存）
+# ---------------------------------------------------------------------------
+
+HISTORY_LIMIT = 100
+HISTORY_PREVIEW = 400
+HISTORY_ID_RE = re.compile(r"[0-9a-f]{12}")
+
+
+class ClipHistory:
+    """履歴。entries は新しい順。ピン留めは上限に数えず、消去でも残す。"""
+
+    def __init__(self, path: Path, limit: int = HISTORY_LIMIT) -> None:
+        self.path = path
+        self.image_dir = path.with_name(path.stem)  # history.json → history/
+        self.limit = limit
+        self._lock = threading.Lock()
+        self.entries: list[dict] = []
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                self.entries = [entry for entry in data if isinstance(entry, dict) and entry.get("id")]
+        except (OSError, ValueError):
+            self.entries = []
+
+    # --- 内部 ---
+    def _save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temp = self.path.with_suffix(".json.tmp")
+        temp.write_text(json.dumps(self.entries, ensure_ascii=False), encoding="utf-8")
+        os.replace(temp, self.path)
+
+    def _remove_file(self, entry: dict) -> None:
+        if entry.get("kind") == "image" and entry.get("file"):
+            try:
+                (self.image_dir / entry["file"]).unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    def _evict(self) -> None:
+        kept: list[dict] = []
+        dropped: list[dict] = []
+        count = 0
+        for entry in self.entries:
+            if entry.get("pinned"):
+                kept.append(entry)
+                continue
+            count += 1
+            (kept if count <= self.limit else dropped).append(entry)
+        self.entries = kept
+        for entry in dropped:
+            if not any(other.get("file") == entry.get("file") for other in kept if entry.get("file")):
+                self._remove_file(entry)
+
+    @staticmethod
+    def _public(entry: dict, full: bool = False) -> dict:
+        item = {key: value for key, value in entry.items() if key != "text"}
+        if entry.get("kind") == "text":
+            text = entry.get("text", "")
+            item["text"] = text if full or len(text) <= HISTORY_PREVIEW else text[:HISTORY_PREVIEW]
+            item["truncated"] = not full and len(text) > HISTORY_PREVIEW
+        return item
+
+    def _insert(self, entry: dict, digest: str) -> dict:
+        previous = next((item for item in self.entries if item.get("hash") == digest), None)
+        if previous is not None:
+            entry["pinned"] = bool(previous.get("pinned"))
+            self.entries.remove(previous)
+        self.entries.insert(0, entry)
+        self._evict()
+        self._save()
+        return self._public(entry)
+
+    # --- 追加 ---
+    def add_text(self, text: str, source: str) -> dict | None:
+        text = normalize_newlines(text)
+        if not text.strip():
+            return None
+        with self._lock:
+            entry = {
+                "id": secrets.token_hex(6), "kind": "text", "hash": text_hash(text), "text": text,
+                "length": len(text), "created": time.time(), "source": source, "pinned": False,
+            }
+            return self._insert(entry, entry["hash"])
+
+    def add_image(self, data: bytes, info: dict | None, source: str) -> dict | None:
+        if not data or not info:
+            return None
+        with self._lock:
+            self.image_dir.mkdir(parents=True, exist_ok=True)
+            filename = f"{info['id']}.{info['ext']}"
+            (self.image_dir / filename).write_bytes(data)
+            entry = {
+                "id": secrets.token_hex(6), "kind": "image", "hash": "img:" + info["id"], "file": filename,
+                "size": info["size"], "width": info["width"], "height": info["height"], "type": info["type"],
+                "created": time.time(), "source": source, "pinned": False,
+            }
+            return self._insert(entry, entry["hash"])
+
+    # --- 参照 ---
+    def list(self, query: str = "", limit: int = HISTORY_LIMIT) -> list[dict]:
+        needle = query.strip().lower()
+        with self._lock:
+            items = []
+            for entry in self.entries:
+                if needle:
+                    if entry.get("kind") == "text" and needle in entry.get("text", "").lower():
+                        pass
+                    elif entry.get("kind") == "image" and needle in ("画像", "image", "img"):
+                        pass
+                    else:
+                        continue
+                items.append(self._public(entry))
+                if len(items) >= limit:
+                    break
+            return items
+
+    def get(self, entry_id: str) -> dict | None:
+        with self._lock:
+            return next((entry for entry in self.entries if entry.get("id") == entry_id), None)
+
+    def public(self, entry_id: str) -> dict | None:
+        entry = self.get(entry_id)
+        return self._public(entry, full=True) if entry else None
+
+    def image_bytes(self, entry_id: str) -> tuple[bytes, dict] | None:
+        entry = self.get(entry_id)
+        if not entry or entry.get("kind") != "image":
+            return None
+        try:
+            return (self.image_dir / entry["file"]).read_bytes(), entry
+        except OSError:
+            return None
+
+    def counts(self) -> dict:
+        with self._lock:
+            return {"total": len(self.entries), "pinned": sum(1 for entry in self.entries if entry.get("pinned"))}
+
+    # --- 変更 ---
+    def set_pinned(self, entry_id: str, pinned: bool) -> dict | None:
+        with self._lock:
+            entry = next((item for item in self.entries if item.get("id") == entry_id), None)
+            if entry is None:
+                return None
+            entry["pinned"] = bool(pinned)
+            self._evict()
+            self._save()
+            return self._public(entry)
+
+    def remove(self, entry_id: str) -> bool:
+        with self._lock:
+            entry = next((item for item in self.entries if item.get("id") == entry_id), None)
+            if entry is None:
+                return False
+            self.entries.remove(entry)
+            if not any(other.get("file") == entry.get("file") for other in self.entries if entry.get("file")):
+                self._remove_file(entry)
+            self._save()
+            return True
+
+    def clear(self, keep_pinned: bool = True) -> int:
+        with self._lock:
+            removed = [entry for entry in self.entries if not (keep_pinned and entry.get("pinned"))]
+            self.entries = [entry for entry in self.entries if keep_pinned and entry.get("pinned")]
+            for entry in removed:
+                if not any(other.get("file") == entry.get("file") for other in self.entries if entry.get("file")):
+                    self._remove_file(entry)
+            self._save()
+            return len(removed)
+
+
+# ---------------------------------------------------------------------------
+# Pro: 画像の保存ルール（サブフォルダーとファイル名のテンプレート）
+# ---------------------------------------------------------------------------
+
+IMAGE_SUBFOLDERS = {"none": "", "date": "%Y-%m-%d", "month": "%Y-%m"}
+DEFAULT_IMAGE_TEMPLATE = "{date}-{time}-{name}"
+IMAGE_TEMPLATE_TOKENS = ("date", "time", "datetime", "year", "month", "day", "name", "pc")
+TEMPLATE_TOKEN_RE = re.compile(r"\{(\w+)\}")
+
+
+def validate_image_template(template: str) -> str | None:
+    """テンプレートの問題点を返す（問題なければ None）。"""
+    if not isinstance(template, str) or not template.strip():
+        return "ファイル名のテンプレートを入力してください"
+    tokens = set(TEMPLATE_TOKEN_RE.findall(template))
+    unknown = tokens - set(IMAGE_TEMPLATE_TOKENS)
+    if unknown:
+        return "使えない項目です: " + ", ".join("{" + token + "}" for token in sorted(unknown))
+    if not tokens:
+        return "{date} や {name} のような項目を 1 つ以上入れてください"
+    return None
+
+
+def render_image_name(template: str, original: str, ext: str, pc_name: str = "", now: time.struct_time | None = None) -> str:
+    """テンプレートからファイル名を作る。Windows で使えない文字は _ に置き換える。"""
+    now = now or time.localtime()
+    values = {
+        "date": time.strftime("%Y%m%d", now), "time": time.strftime("%H%M%S", now),
+        "datetime": time.strftime("%Y%m%d-%H%M%S", now),
+        "year": time.strftime("%Y", now), "month": time.strftime("%m", now), "day": time.strftime("%d", now),
+        "name": safe_stem(original), "pc": safe_stem(pc_name) if pc_name else "pc",
+    }
+    stem = TEMPLATE_TOKEN_RE.sub(lambda match: values.get(match.group(1), ""), template)
+    stem = "".join(ch if (ch.isalnum() or ch in "-_ .") else "_" for ch in stem).strip(" ._")
+    return f"{stem[:120] or 'image'}.{ext}"
+
+
+def image_subfolder(rule: str, now: time.struct_time | None = None) -> str:
+    pattern = IMAGE_SUBFOLDERS.get(rule or "none", "")
+    return time.strftime(pattern, now or time.localtime()) if pattern else ""
+
+
+# ---------------------------------------------------------------------------
+# Pro: PC 側のホットキー（Windows の RegisterHotKey）
+# ---------------------------------------------------------------------------
+
+HOTKEY_ACTIONS = {
+    "open_dashboard": "PC セットアップ画面を開く",
+    "restore_phone": "iPhone から最後に届いた内容を PC のクリップボードに戻す",
+    "restore_previous": "履歴の 1 つ前の内容をクリップボードに戻す（押すたびに遡る）",
+}
+DEFAULT_HOTKEYS = {"open_dashboard": "Ctrl+Alt+C", "restore_phone": "Ctrl+Alt+V", "restore_previous": "Ctrl+Alt+Left"}
+HOTKEY_MODIFIERS = {"ctrl": 0x0002, "control": 0x0002, "alt": 0x0001, "shift": 0x0004, "win": 0x0008}
+HOTKEY_KEYS = {
+    "space": 0x20, "enter": 0x0D, "return": 0x0D, "tab": 0x09, "esc": 0x1B, "escape": 0x1B, "backspace": 0x08,
+    "delete": 0x2E, "del": 0x2E, "insert": 0x2D, "ins": 0x2D, "home": 0x24, "end": 0x23, "pageup": 0x21, "pagedown": 0x22,
+    "left": 0x25, "up": 0x26, "right": 0x27, "down": 0x28, "pause": 0x13, "printscreen": 0x2C, "scrolllock": 0x91,
+    "numlock": 0x90, "capslock": 0x14,
+}
+MOD_NOREPEAT = 0x4000
+
+
+def parse_hotkey(text: str) -> tuple[int, int]:
+    """'Ctrl+Alt+V' のような表記を RegisterHotKey の (修飾キー, 仮想キー) にする。"""
+    parts = [part.strip() for part in (text or "").split("+") if part.strip()]
+    if not parts:
+        raise ValueError("Ctrl+Alt+V のように、修飾キーと通常のキーを + でつないでください")
+    modifiers = 0
+    key: str | None = None
+    for part in parts:
+        lowered = part.lower()
+        if lowered in HOTKEY_MODIFIERS:
+            modifiers |= HOTKEY_MODIFIERS[lowered]
+            continue
+        if key is not None:
+            raise ValueError("通常のキーは 1 つだけにしてください")
+        key = lowered
+    if key is None:
+        raise ValueError("Ctrl や Alt のほかに、通常のキー（文字・数字・F キーなど）を 1 つ指定してください")
+    if modifiers == 0:
+        raise ValueError("Ctrl / Alt / Shift / Win のいずれかを組み合わせてください")
+    if len(key) == 1 and key.isascii() and key.isalnum():
+        vk = ord(key.upper())
+    elif key in HOTKEY_KEYS:
+        vk = HOTKEY_KEYS[key]
+    elif re.fullmatch(r"f([1-9]|1\d|2[0-4])", key):
+        vk = 0x70 + int(key[1:]) - 1
+    else:
+        raise ValueError(f"使えないキーです: {part}")
+    return modifiers | MOD_NOREPEAT, vk
+
+
+class HotkeyService:
+    """グローバルホットキー。登録と受信は専用スレッド（メッセージループ）で行う。Windows 以外では何もしない。"""
+
+    supported = sys.platform == "win32"
+
+    def __init__(self, handler) -> None:
+        self.handler = handler
+        self.bindings: dict[str, str] = {}
+        self.errors: dict[str, str] = {}
+        self._thread: threading.Thread | None = None
+        self._thread_id: int | None = None
+
+    @property
+    def active(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def start(self, bindings: dict[str, str]) -> dict[str, str]:
+        """bindings（action → 'Ctrl+Alt+V'）を登録し、登録できなかった action の理由を返す。"""
+        self.stop()
+        self.bindings = dict(bindings)
+        self.errors = {}
+        if not self.supported or not bindings:
+            return {}
+        ready = threading.Event()
+        self._thread = threading.Thread(target=self._loop, args=(dict(bindings), ready), name="hotkeys", daemon=True)
+        self._thread.start()
+        ready.wait(3)
+        return dict(self.errors)
+
+    def stop(self) -> None:
+        if self._thread is not None and self._thread_id and self.supported:
+            import ctypes
+
+            ctypes.WinDLL("user32").PostThreadMessageW(self._thread_id, 0x0012, 0, 0)  # WM_QUIT
+            self._thread.join(2)
+        self._thread = None
+        self._thread_id = None
+
+    def _loop(self, bindings: dict[str, str], ready: threading.Event) -> None:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        kernel32 = ctypes.WinDLL("kernel32")
+        user32.RegisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT]
+        user32.RegisterHotKey.restype = wintypes.BOOL
+        user32.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
+        user32.GetMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT]
+        user32.GetMessageW.restype = ctypes.c_int
+        self._thread_id = kernel32.GetCurrentThreadId()
+        registered: dict[int, str] = {}
+        for index, (action, text) in enumerate(bindings.items(), start=1):
+            try:
+                modifiers, vk = parse_hotkey(text)
+            except ValueError as exc:
+                self.errors[action] = str(exc)
+                continue
+            if not user32.RegisterHotKey(None, index, modifiers, vk):
+                code = ctypes.get_last_error()
+                self.errors[action] = "このキーは他のアプリが使っています" if code == 1409 else f"登録できません（エラー {code}）"
+                continue
+            registered[index] = action
+        ready.set()
+        try:
+            message = wintypes.MSG()
+            while user32.GetMessageW(ctypes.byref(message), None, 0, 0) > 0:
+                if message.message == 0x0312:  # WM_HOTKEY
+                    action = registered.get(int(message.wParam))
+                    if action:
+                        try:
+                            self.handler(action)
+                        except Exception:  # noqa: BLE001 - ホットキーの処理失敗でループを止めない
+                            pass
+        finally:
+            for index in registered:
+                user32.UnregisterHotKey(None, index)
 
 
 # ---------------------------------------------------------------------------
@@ -1448,6 +1878,7 @@ class ClipBridgeApp:
         updater: Updater | None = None,
         probe=None,
         image_dir: Path | None = None,
+        history_path: Path | None = None,
     ) -> None:
         self.port = port
         self.config_path = config_path
@@ -1457,6 +1888,19 @@ class ClipBridgeApp:
         configured_dir = self.config.get("image_dir")
         self.image_dir = image_dir or (Path(configured_dir) if isinstance(configured_dir, str) and configured_dir else default_image_dir())
         self.last_image: dict | None = None
+        # Pro
+        self.license = parse_license(self.config.get("license") if isinstance(self.config.get("license"), str) else None)
+        self.history = ClipHistory(history_path or config_path.with_name("history.json"))
+        self.history_enabled = bool(self.config.get("history_enabled", True))
+        self.image_rules = {
+            "subfolder": self.config.get("image_subfolder") if self.config.get("image_subfolder") in IMAGE_SUBFOLDERS else "none",
+            "template": self.config.get("image_template") if validate_image_template(self.config.get("image_template") or "") is None else DEFAULT_IMAGE_TEMPLATE,
+        }
+        self.hotkeys_enabled = bool(self.config.get("hotkeys_enabled", True))
+        saved_hotkeys = self.config.get("hotkeys") if isinstance(self.config.get("hotkeys"), dict) else {}
+        self.hotkey_bindings = {action: str(saved_hotkeys.get(action) or default) for action, default in DEFAULT_HOTKEYS.items()}
+        self.hotkeys = HotkeyService(self.hotkey_action)
+        self._cycle_index = 0  # restore_previous で履歴をどこまで遡ったか
         self.clipboard = clipboard or detect_clipboard()
         self._clip_lock = threading.Lock()
         self._own_sequence = -1  # 自分がクリップボードに書いた直後の番号。監視スレッドが読み戻さないようにする
@@ -1509,7 +1953,181 @@ class ClipBridgeApp:
             if initial:
                 self.log(f"clipboard read failed: {type(exc).__name__}")
             return
-        self.state.set(normalize_newlines(text), kind, "pc", self._store_image(image_data))
+        info = self._store_image(image_data)
+        if self.state.set(normalize_newlines(text), kind, "pc", info) and not initial:
+            self._cycle_index = 0
+            if kind == "text":
+                self.record_text(text, "pc")
+            elif kind == "image" and image_data:
+                self.record_image(image_data, info, "pc")
+
+    # --- Pro ------------------------------------------------------------------
+    @property
+    def pro(self) -> bool:
+        return bool(self.license.get("valid"))
+
+    def license_status(self) -> dict:
+        return {
+            **self.license,
+            "pro": self.pro,
+            "features": list(PRO_FEATURES),
+            "support_url": SUPPORT_URL,
+            "support_email": SUPPORT_EMAIL,
+        }
+
+    def apply_license(self, key: str) -> dict:
+        info = parse_license(key)
+        if not info["valid"]:
+            raise ValueError(info["error"] or "ライセンスキーが無効です")
+        self.config["license"] = key.strip()
+        save_config(self.config_path, self.config)
+        self.license = info
+        self.log(f"license applied: {info['id']}")
+        self.start_hotkeys()
+        return self.license_status()
+
+    def remove_license(self) -> None:
+        self.config.pop("license", None)
+        save_config(self.config_path, self.config)
+        self.license = parse_license(None)
+        self.hotkeys.stop()
+        self.log("license removed")
+
+    def record_text(self, text: str, source: str) -> None:
+        if self.pro and self.history_enabled:
+            try:
+                self.history.add_text(text, source)
+            except OSError as exc:
+                self.log(f"history write failed: {type(exc).__name__}")
+
+    def record_image(self, data: bytes, info: dict | None, source: str) -> None:
+        if self.pro and self.history_enabled and info:
+            try:
+                self.history.add_image(data, info, source)
+            except OSError as exc:
+                self.log(f"history write failed: {type(exc).__name__}")
+
+    def set_history_enabled(self, enabled: bool) -> None:
+        self.history_enabled = bool(enabled)
+        self.config["history_enabled"] = self.history_enabled
+        save_config(self.config_path, self.config)
+
+    def restore_entry(self, entry_id: str, source: str = "pc") -> dict:
+        """履歴の項目を PC のクリップボードに戻す（再送）。iPhone には SSE で届く。"""
+        entry = self.history.get(entry_id)
+        if entry is None:
+            raise KeyError(entry_id)
+        if entry.get("kind") == "image":
+            found = self.history.image_bytes(entry_id)
+            if found is None:
+                raise FileNotFoundError(entry_id)
+            data, _ = found
+            with self._clip_lock:
+                self.clipboard.write_image(data)
+                self._own_sequence = self.clipboard.sequence()
+            self.state.set("", "image", source, self._store_image(data))
+        else:
+            text = entry.get("text", "")
+            with self._clip_lock:
+                self.clipboard.write(text)
+                self._own_sequence = self.clipboard.sequence()
+            self._store_image(None)
+            self.state.set(normalize_newlines(text), "text" if text else "empty", source)
+        return self.history.public(entry_id) or {}
+
+    def set_image_settings(self, directory: str | None, subfolder: str | None, template: str | None) -> dict:
+        if directory is not None:
+            directory = directory.strip()
+            if directory:
+                self.image_dir = Path(directory).expanduser()
+                self.config["image_dir"] = str(self.image_dir)
+            else:
+                self.image_dir = default_image_dir()
+                self.config.pop("image_dir", None)
+        if subfolder is not None:
+            if subfolder not in IMAGE_SUBFOLDERS:
+                raise ValueError("サブフォルダーの指定が不正です")
+            self.image_rules["subfolder"] = subfolder
+            self.config["image_subfolder"] = subfolder
+        if template is not None:
+            problem = validate_image_template(template)
+            if problem:
+                raise ValueError(problem)
+            self.image_rules["template"] = template.strip()
+            self.config["image_template"] = template.strip()
+        save_config(self.config_path, self.config)
+        return self.image_settings()
+
+    def image_settings(self) -> dict:
+        now = time.localtime()
+        template = self.image_rules["template"] if self.pro else DEFAULT_IMAGE_TEMPLATE
+        subfolder = self.image_rules["subfolder"] if self.pro else "none"
+        example = Path(image_subfolder(subfolder, now)) / render_image_name(template, "IMG_0042.jpg", "jpg", self.pc_name, now)
+        return {
+            "dir": str(self.image_dir),
+            "subfolder": self.image_rules["subfolder"],
+            "template": self.image_rules["template"],
+            "default_template": DEFAULT_IMAGE_TEMPLATE,
+            "tokens": list(IMAGE_TEMPLATE_TOKENS),
+            "subfolders": list(IMAGE_SUBFOLDERS),
+            "example": str(example),
+            "applied": self.pro,
+        }
+
+    def hotkey_action(self, action: str) -> None:
+        if action == "open_dashboard":
+            webbrowser.open(f"http://{HOST}:{self.port}/pc")
+        elif action == "restore_phone":
+            entry = next((item for item in self.history.entries if item.get("source") == "phone"), None)
+            if entry:
+                self.restore_entry(entry["id"])
+        elif action == "restore_previous":
+            entries = list(self.history.entries)
+            if not entries:
+                return
+            index = self._cycle_index + 1
+            if index >= len(entries):
+                index = 0
+            self._cycle_index = index
+            self.restore_entry(entries[index]["id"])
+
+    def start_hotkeys(self) -> dict[str, str]:
+        if self.pro and self.hotkeys_enabled and HotkeyService.supported:
+            errors = self.hotkeys.start(self.hotkey_bindings)
+            if errors:
+                self.log("hotkeys partially registered: " + ", ".join(errors))
+            return errors
+        self.hotkeys.stop()
+        return {}
+
+    def set_hotkeys(self, enabled: bool | None, bindings: dict | None) -> dict:
+        if bindings is not None:
+            cleaned: dict[str, str] = {}
+            for action in HOTKEY_ACTIONS:
+                value = str(bindings.get(action, self.hotkey_bindings[action]) or "").strip()
+                parse_hotkey(value)  # 形式が悪ければ ValueError
+                cleaned[action] = value
+            if len(set(cleaned.values())) != len(cleaned):
+                raise ValueError("同じキーを 2 つの操作に割り当てることはできません")
+            self.hotkey_bindings = cleaned
+            self.config["hotkeys"] = cleaned
+        if enabled is not None:
+            self.hotkeys_enabled = bool(enabled)
+            self.config["hotkeys_enabled"] = self.hotkeys_enabled
+        save_config(self.config_path, self.config)
+        self.start_hotkeys()
+        return self.hotkey_status()
+
+    def hotkey_status(self) -> dict:
+        return {
+            "supported": HotkeyService.supported,
+            "enabled": self.hotkeys_enabled,
+            "active": self.hotkeys.active,
+            "bindings": dict(self.hotkey_bindings),
+            "errors": dict(self.hotkeys.errors),
+            "actions": dict(HOTKEY_ACTIONS),
+            "defaults": dict(DEFAULT_HOTKEYS),
+        }
 
     def _store_image(self, data: bytes | None) -> dict | None:
         """iPhone に配る画像を保持し、SSE で送るメタ情報を返す。画像でない・大きすぎるときは None（保持も消す）。"""
@@ -1556,7 +2174,10 @@ class ClipBridgeApp:
         with self._clip_lock:
             self.clipboard.write(text)
         normalized = normalize_newlines(text)
+        self._store_image(None)
         self.state.set(normalized, "text" if normalized else "empty", "phone")
+        self._cycle_index = 0
+        self.record_text(normalized, "phone")
         return self.state.snapshot()
 
     def receive_image(self, data: bytes, original_name: str, save: bool = True) -> dict:
@@ -1571,8 +2192,17 @@ class ClipBridgeApp:
         kind, ext = sniffed
         target: Path | None = None
         if save:
-            self.image_dir.mkdir(parents=True, exist_ok=True)
-            target = unique_path(self.image_dir, image_filename(original_name, ext))
+            # Pro の保存ルール（日付フォルダー・ファイル名テンプレート）。無料版は既定のまま
+            now = time.localtime()
+            folder = self.image_dir
+            template = DEFAULT_IMAGE_TEMPLATE
+            if self.pro:
+                sub = image_subfolder(self.image_rules["subfolder"], now)
+                if sub:
+                    folder = folder / sub
+                template = self.image_rules["template"]
+            folder.mkdir(parents=True, exist_ok=True)
+            target = unique_path(folder, render_image_name(template, original_name, ext, self.pc_name, now))
             temp = target.with_name(target.name + ".part")
             temp.write_bytes(data)
             os.replace(temp, target)
@@ -1588,7 +2218,10 @@ class ClipBridgeApp:
                 raise ClipboardError(f"PC のクリップボードに入れられませんでした: {warning}") from exc
         else:
             # 送った iPhone 側にも「PC のクリップボードは今この画像」と伝える（送信元なので新着扱いにはならない）
-            self.state.set("", "image", "phone", self._store_image(data))
+            info = self._store_image(data)
+            self.state.set("", "image", "phone", info)
+            self._cycle_index = 0
+            self.record_image(data, info, "phone")
         name = target.name if target else f"{safe_stem(original_name)}.{ext}"
         self.last_image = {
             "name": name,
@@ -1772,6 +2405,11 @@ class ClipBridgeApp:
             "clip": {"kind": snapshot["kind"], "length": snapshot["length"], "updated": snapshot["updated"]},
             "image_dir": str(self.image_dir),
             "last_image": self.last_image,
+            "pro": self.pro,
+            "license": self.license_status(),
+            "history": {"enabled": self.history_enabled, **self.history.counts(), "limit": HISTORY_LIMIT},
+            "image_rules": self.image_settings(),
+            "hotkeys": self.hotkey_status(),
             "config_path": str(self.config_path),
             "update": self.updater.info,
             "frozen": FROZEN,
@@ -1892,6 +2530,84 @@ def make_handler(app: ClipBridgeApp):
             self._error(401, "unauthorized", "PC と接続し直してください")
             return False
 
+        def _require_pro(self) -> bool:
+            if app.pro:
+                return True
+            self._error(403, "pro_required", "この機能は ClipBridge Pro で使えます。PC のセットアップ画面でライセンスを適用してください")
+            return False
+
+        # --- Pro: 履歴 API ----------------------------------------------------
+        def _history_get(self, path: str, query: dict[str, str]) -> None:
+            if not self._require_token():
+                return
+            if not self._require_pro():
+                return
+            app.record_device(self)
+            if path == "/api/history":
+                try:
+                    limit = max(1, min(HISTORY_LIMIT, int(query.get("limit") or HISTORY_LIMIT)))
+                except ValueError:
+                    limit = HISTORY_LIMIT
+                return self._json(200, {"items": app.history.list(query.get("q", ""), limit), **app.history.counts()})
+            match = re.fullmatch(r"/api/history/([0-9a-f]{12})(?:/(image))?", path)
+            if not match:
+                return self._not_found()
+            entry_id, sub = match.group(1), match.group(2)
+            if sub == "image":
+                found = app.history.image_bytes(entry_id)
+                if found is None:
+                    return self._error(404, "not_found", "この画像は履歴にありません")
+                data, entry = found
+                return self._send(200, data, entry["type"], {"Content-Disposition": f'inline; filename="clipbridge-{entry_id}.{entry["file"].rsplit(".", 1)[-1]}"'})
+            entry = app.history.public(entry_id)
+            if entry is None:
+                return self._error(404, "not_found", "この項目は履歴にありません")
+            return self._json(200, entry)
+
+        def _history_post(self, path: str) -> None:
+            if not self._require_token():
+                return
+            if not self._origin_ok():
+                return self._error(403, "origin_mismatch", "Origin が一致しません")
+            if not self._require_pro():
+                return
+            body = self._read_body(4096)
+            if body is None:
+                return
+            try:
+                data = json.loads(body.decode("utf-8") or "{}")
+            except ValueError:
+                return self._error(400, "bad_request", "JSON が不正です")
+            app.record_device(self)
+            if path == "/api/history/clear":
+                return self._json(200, {"ok": True, "removed": app.history.clear(keep_pinned=data.get("keep_pinned", True))})
+            match = re.fullmatch(r"/api/history/([0-9a-f]{12})/(restore|pin|delete)", path)
+            if not match:
+                return self._not_found()
+            entry_id, action = match.group(1), match.group(2)
+            return self._history_action(entry_id, action, data)
+
+        def _history_action(self, entry_id: str, action: str, data: dict) -> None:
+            if action == "restore":
+                try:
+                    entry = app.restore_entry(entry_id)
+                except KeyError:
+                    return self._error(404, "not_found", "この項目は履歴にありません")
+                except (FileNotFoundError, ClipboardError) as exc:
+                    return self._error(500, "clipboard", f"クリップボードに戻せませんでした: {exc}")
+                app.log("history restored")
+                return self._json(200, {"ok": True, "entry": entry})
+            if action == "pin":
+                entry = app.history.set_pinned(entry_id, bool(data.get("pinned", True)))
+                if entry is None:
+                    return self._error(404, "not_found", "この項目は履歴にありません")
+                return self._json(200, {"ok": True, "entry": entry})
+            if action == "delete":
+                if not app.history.remove(entry_id):
+                    return self._error(404, "not_found", "この項目は履歴にありません")
+                return self._json(200, {"ok": True})
+            return self._not_found()
+
         def _host_matches(self, origin: str) -> bool:
             parsed = urlsplit(origin)
             if parsed.scheme not in ("http", "https"):
@@ -1972,7 +2688,29 @@ def make_handler(app: ClipBridgeApp):
                 # iOS Safari が慣例的に探しに来るサイズ違いのアイコン名をまとめて返す
                 return self._file("icon-180.png", "image/png")
             if path == "/api/health":
-                return self._json(200, {"ok": True, "app": APP_NAME, "version": __version__, "pc_name": app.pc_name})
+                return self._json(200, {"ok": True, "app": APP_NAME, "version": __version__, "pc_name": app.pc_name, "pro": app.pro})
+            if path.startswith("/api/history"):
+                return self._history_get(path, query)
+            if path.startswith("/pc/api/history"):
+                # PC 画面用（トークンなし・ループバック限定）
+                if not self._is_admin():
+                    return self._not_found()
+                if not self._require_pro():
+                    return
+                match = re.fullmatch(r"/pc/api/history/([0-9a-f]{12})/image", path)
+                if match:
+                    found = app.history.image_bytes(match.group(1))
+                    if found is None:
+                        return self._error(404, "not_found", "この画像は履歴にありません")
+                    data, entry = found
+                    return self._send(200, data, entry["type"])
+                if path != "/pc/api/history":
+                    return self._not_found()
+                try:
+                    limit = max(1, min(HISTORY_LIMIT, int(query.get("limit") or HISTORY_LIMIT)))
+                except ValueError:
+                    limit = HISTORY_LIMIT
+                return self._json(200, {"items": app.history.list(query.get("q", ""), limit), **app.history.counts()})
             if path == "/api/peers":
                 if not self._require_token():
                     return
@@ -2116,6 +2854,8 @@ def make_handler(app: ClipBridgeApp):
                 return self._write_clip()
             if path == "/api/image":
                 return self._write_image()
+            if path.startswith("/api/history/"):
+                return self._history_post(path)
             if path.startswith("/pc/api/"):
                 return self._admin_action(path[len("/pc/api/"):])
             if path in ("/", "/api/health", "/api/events", "/manifest.webmanifest") or path in STATIC_FILES:
@@ -2223,6 +2963,46 @@ def make_handler(app: ClipBridgeApp):
                 except OSError as exc:
                     return self._error(500, "open_failed", f"フォルダーを開けませんでした: {type(exc).__name__}")
                 return self._json(200, {"ok": True, "path": str(app.image_dir)})
+            if action == "images/settings":
+                wants_pro = data.get("subfolder") is not None or data.get("template") is not None
+                if wants_pro and not self._require_pro():
+                    return
+                try:
+                    return self._json(200, app.set_image_settings(data.get("dir"), data.get("subfolder"), data.get("template")))
+                except ValueError as exc:
+                    return self._error(400, "bad_request", str(exc))
+                except OSError as exc:
+                    return self._error(500, "save_failed", f"設定を保存できませんでした: {type(exc).__name__}")
+            # --- Pro ---
+            if action == "license":
+                try:
+                    info = app.apply_license(str(data.get("key", "")))
+                except ValueError as exc:
+                    return self._error(400, "invalid_license", str(exc))
+                return self._json(200, {"ok": True, "license": info})
+            if action == "license/remove":
+                app.remove_license()
+                return self._json(200, {"ok": True, "license": app.license_status()})
+            if action.startswith("history/"):
+                if not self._require_pro():
+                    return
+                sub = action[len("history/"):]
+                if sub == "settings":
+                    app.set_history_enabled(bool(data.get("enabled")))
+                    return self._json(200, {"ok": True, "enabled": app.history_enabled})
+                if sub == "clear":
+                    return self._json(200, {"ok": True, "removed": app.history.clear(keep_pinned=data.get("keep_pinned", True))})
+                entry_id = str(data.get("id", ""))
+                if sub in ("restore", "pin", "delete") and HISTORY_ID_RE.fullmatch(entry_id):
+                    return self._history_action(entry_id, sub, data)
+                return self._not_found()
+            if action == "hotkeys":
+                if not self._require_pro():
+                    return
+                try:
+                    return self._json(200, app.set_hotkeys(data.get("enabled"), data.get("bindings") if isinstance(data.get("bindings"), dict) else None))
+                except ValueError as exc:
+                    return self._error(400, "bad_request", str(exc))
             if action == "update/check":
                 return self._json(200, app.updater.check())
             if action == "update/apply":
@@ -2348,7 +3128,8 @@ def main(argv: list[str] | None = None) -> int:
         threading.Thread(target=app.ensure_serve, name="tailscale-serve", daemon=True).start()
     if not args.no_update_check:
         app.start_update_checker()
-    app.log(f"{APP_NAME} {__version__} 起動: {dashboard}")
+    app.start_hotkeys()
+    app.log(f"{APP_NAME} {__version__} 起動: {dashboard}" + (" (Pro)" if app.pro else ""))
     app.log("iPhone 用の接続情報（QR / コード）はこの画面に表示されます。")
     if app.clipboard.name != "windows":
         app.log("注意: この OS では実際のクリップボードと連携しません（開発用）。")
@@ -2360,6 +3141,7 @@ def main(argv: list[str] | None = None) -> int:
         pass
     finally:
         app.stopping = True
+        app.hotkeys.stop()
         server.server_close()
     if app.restart_command:
         try:

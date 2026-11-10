@@ -1049,6 +1049,280 @@ def test_clip_state_treats_images_by_id():
     assert state.snapshot()["image"] is None
 
 
+# ---------------------------------------------------------------------------
+# Pro: ライセンス・履歴・保存ルール・ホットキー
+# ---------------------------------------------------------------------------
+
+LICENSE_TOOL = Path(__file__).resolve().parents[2] / "scripts" / "license_tool.py"
+_tool_spec = importlib.util.spec_from_file_location("license_tool", LICENSE_TOOL)
+license_tool = importlib.util.module_from_spec(_tool_spec)
+assert _tool_spec.loader is not None
+_tool_spec.loader.exec_module(license_tool)
+TEST_KEYPAIR = license_tool.keygen(1024)  # テスト用（本物は 2048）
+TEST_PUBLIC = {"n": format(TEST_KEYPAIR["n"], "x"), "e": TEST_KEYPAIR["e"]}
+# テスト中に開発機の本物のグローバルホットキーを奪わないよう、登録は無効にする（解析と設定の保存だけを検証する）
+server.HotkeyService.supported = False
+
+
+def issue_key(**overrides) -> str:
+    fields = {"email": "test@example.com", "name": "テスト", "license_id": "CB-TEST-0001"}
+    fields.update(overrides)
+    return license_tool.issue(TEST_KEYPAIR, **fields)
+
+
+@pytest.fixture
+def pro(app, monkeypatch):
+    """app を Pro にする（テスト用の公開鍵に差し替えてからキーを適用）。"""
+    monkeypatch.setattr(server, "LICENSE_PUBLIC_KEY", TEST_PUBLIC)
+    app.apply_license(issue_key())
+    assert app.pro
+    return app
+
+
+def admin(app, action, body=None):
+    return request(app.base, "/pc/api/" + action, method="POST", json_body=body or {}, headers={"X-ClipBridge": "1"})
+
+
+def test_license_parse_accepts_signed_keys_and_rejects_tampering():
+    key = issue_key()
+    info = server.parse_license(key, TEST_PUBLIC)
+    assert info["valid"] and info["id"] == "CB-TEST-0001" and info["email"] == "test@example.com" and info["plan"] == "pro"
+    assert not server.parse_license(key[:-6] + "AAAAAA", TEST_PUBLIC)["valid"]
+    prefix, payload, signature = key.split(".")
+    forged = json.loads(server._b64url_decode(payload))
+    forged["email"] = "someone@else.example"
+    forged_key = prefix + "." + license_tool.b64url(json.dumps(forged, sort_keys=True, separators=(",", ":")).encode()) + "." + signature
+    assert "署名" in server.parse_license(forged_key, TEST_PUBLIC)["error"]
+    assert "期限" in server.parse_license(issue_key(expires="2020-01-01"), TEST_PUBLIC)["error"]
+    assert server.parse_license(issue_key(expires="2999-12-31"), TEST_PUBLIC)["valid"]
+    assert "Pro" in server.parse_license(issue_key(plan="basic"), TEST_PUBLIC)["error"]
+    assert "形式" in server.parse_license("not-a-key", TEST_PUBLIC)["error"]
+    assert "入力" in server.parse_license("", TEST_PUBLIC)["error"]
+    # 別の鍵で発行したものは通らない
+    other = license_tool.keygen(1024)
+    assert not server.parse_license(license_tool.issue(other, "x@y.z", "", "CB-X"), TEST_PUBLIC)["valid"]
+    # 本物の公開鍵（server.py 埋め込み）はテスト鍵の署名を受け付けない
+    assert not server.parse_license(key)["valid"]
+
+
+def test_license_apply_and_remove_via_dashboard(app, monkeypatch):
+    monkeypatch.setattr(server, "LICENSE_PUBLIC_KEY", TEST_PUBLIC)
+    assert as_json(request(app.base, "/api/health")[2])["pro"] is False
+    status, _, body = admin(app, "license", {"key": "CBP1.bad.key"})
+    assert status == 400 and as_json(body)["error"] == "invalid_license"
+    status, _, body = admin(app, "license", {"key": issue_key()})
+    assert status == 200 and as_json(body)["license"]["valid"] and as_json(body)["license"]["pro"]
+    assert as_json(request(app.base, "/api/health")[2])["pro"] is True
+    admin_state = app.admin_status()
+    assert admin_state["pro"] and admin_state["license"]["id"] == "CB-TEST-0001" and "history" in admin_state["license"]["features"]
+    assert json.loads(app.config_path.read_text(encoding="utf-8"))["license"].startswith("CBP1.")
+    # 再起動後も有効
+    reloaded = server.ClipBridgeApp(port=0, config_path=app.config_path, clipboard=server.MemoryClipboard(), tailscale=FakeTailscale(), startup_dir=app.config_path.parent / "s")
+    assert reloaded.pro
+    status, _, body = admin(app, "license/remove")
+    assert status == 200 and not as_json(body)["license"]["pro"] and not app.pro
+    assert "license" not in json.loads(app.config_path.read_text(encoding="utf-8"))
+
+
+def test_history_requires_pro(app):
+    status, _, body = request(app.base, "/api/history", token=app.token)
+    assert status == 403 and as_json(body)["error"] == "pro_required"
+    assert request(app.base, "/api/history")[0] == 401
+    assert admin(app, "history/clear")[0] == 403
+    assert admin(app, "hotkeys", {"enabled": True})[0] == 403
+    assert admin(app, "images/settings", {"subfolder": "date"})[0] == 403
+    assert admin(app, "images/settings", {"dir": str(app.config_path.parent / "free-dir")})[0] == 200  # 保存先の変更は無料でも可
+    assert app.image_dir == app.config_path.parent / "free-dir"
+    # 無料版では何も記録しない
+    app.fake_clipboard.external_copy("free text")
+    time.sleep(0.3)
+    assert app.history.counts()["total"] == 0
+
+
+def test_history_records_searches_pins_and_restores(pro):
+    app, base, token = pro, pro.base, pro.token
+    app.fake_clipboard.external_copy("最初のメモ")
+    time.sleep(0.3)
+    app.fake_clipboard.external_copy("二番目 https://example.com")
+    time.sleep(0.3)
+    request(base, "/api/clip", method="POST", token=token, data="iPhone から送った文".encode("utf-8"))
+    status, _, body = request(base, "/api/history", token=token)
+    assert status == 200
+    items = as_json(body)["items"]
+    assert [item["text"] for item in items] == ["iPhone から送った文", "二番目 https://example.com", "最初のメモ"]
+    assert [item["source"] for item in items] == ["phone", "pc", "pc"]
+    # 同じ内容をまたコピーすると先頭に移動し、重複しない
+    app.fake_clipboard.external_copy("最初のメモ")
+    time.sleep(0.3)
+    items = as_json(request(base, "/api/history", token=token)[2])["items"]
+    assert [item["text"] for item in items] == ["最初のメモ", "iPhone から送った文", "二番目 https://example.com"]
+    # 検索
+    items = as_json(request(base, "/api/history?q=example", token=token)[2])["items"]
+    assert len(items) == 1 and items[0]["text"].startswith("二番目")
+    # 長文はプレビューに切り詰め、個別取得で全文
+    long_text = "長い" * 500
+    app.fake_clipboard.external_copy(long_text)
+    time.sleep(0.3)
+    first = as_json(request(base, "/api/history", token=token)[2])["items"][0]
+    assert first["truncated"] and len(first["text"]) == server.HISTORY_PREVIEW and first["length"] == len(long_text)
+    full = as_json(request(base, f"/api/history/{first['id']}", token=token)[2])
+    assert full["text"] == long_text and not full["truncated"]
+    # ピン留めと再送
+    target = next(item for item in items if item["text"].startswith("二番目"))
+    status, _, body = request(base, f"/api/history/{target['id']}/pin", method="POST", token=token, json_body={"pinned": True})
+    assert status == 200 and as_json(body)["entry"]["pinned"] is True
+    status, _, body = request(base, f"/api/history/{target['id']}/restore", method="POST", token=token, json_body={})
+    assert status == 200 and app.fake_clipboard.text == "二番目 https://example.com"
+    assert as_json(request(base, "/api/clip", token=token)[2])["text"] == "二番目 https://example.com"
+    time.sleep(0.3)
+    assert app.history.counts()["total"] == 4  # 戻しても履歴は増えない
+    # 削除・消去（ピン留めは残る）
+    assert request(base, f"/api/history/{first['id']}/delete", method="POST", token=token, json_body={})[0] == 200
+    assert request(base, "/api/history/clear", method="POST", token=token, json_body={})[0] == 200
+    items = as_json(request(base, "/api/history", token=token)[2])["items"]
+    assert [item["text"] for item in items] == ["二番目 https://example.com"] and items[0]["pinned"]
+    assert request(base, "/api/history/000000000000/restore", method="POST", token=token, json_body={})[0] == 404
+
+
+def test_history_keeps_images_and_evicts_beyond_limit(pro):
+    app, base, token = pro, pro.base, pro.token
+    app.history.limit = 3
+    png = tiny_png(4, 2)
+    app.fake_clipboard.external_copy_image(png)
+    time.sleep(0.3)
+    items = as_json(request(base, "/api/history", token=token)[2])["items"]
+    assert items[0]["kind"] == "image" and items[0]["width"] == 4 and "text" not in items[0]
+    image_id = items[0]["id"]
+    status, headers, body = request(base, f"/api/history/{image_id}/image", token=token)
+    assert status == 200 and body == png and headers["Content-Type"] == "image/png"
+    assert (app.history.image_dir / items[0]["file"]).exists()
+    assert as_json(request(base, "/api/history?q=" + quote("画像"), token=token)[2])["items"][0]["id"] == image_id
+    # ピン留めした画像は上限を超えても残り、ファイルも消えない
+    request(base, f"/api/history/{image_id}/pin", method="POST", token=token, json_body={"pinned": True})
+    for index in range(5):
+        app.fake_clipboard.external_copy(f"text {index}")
+        time.sleep(0.25)
+    items = as_json(request(base, "/api/history", token=token)[2])["items"]
+    assert len(items) == 4 and sum(1 for item in items if item["kind"] == "image") == 1
+    assert [item["text"] for item in items if item["kind"] == "text"] == ["text 4", "text 3", "text 2"]
+    assert (app.history.image_dir / items[-1]["file"]).exists()
+    # 画像を戻すと PC のクリップボードが画像になる
+    status, _, body = request(base, f"/api/history/{image_id}/restore", method="POST", token=token, json_body={})
+    assert status == 200 and app.fake_clipboard.image_data == png
+    assert as_json(request(base, "/api/clip", token=token)[2])["kind"] == "image"
+    # ピン留めしたままでも削除でき、ファイルも消える
+    file_path = app.history.image_dir / items[-1]["file"]
+    assert request(base, f"/api/history/{image_id}/delete", method="POST", token=token, json_body={})[0] == 200
+    assert not file_path.exists()
+    # ピン留めを外した項目が上限の外にあれば、その時点で履歴から外れる
+    app.fake_clipboard.external_copy_image(tiny_png(2, 2))
+    time.sleep(0.3)
+    older = as_json(request(base, "/api/history", token=token)[2])["items"][0]
+    request(base, f"/api/history/{older['id']}/pin", method="POST", token=token, json_body={"pinned": True})
+    for index in range(3):
+        app.fake_clipboard.external_copy(f"newer {index}")
+        time.sleep(0.25)
+    request(base, f"/api/history/{older['id']}/pin", method="POST", token=token, json_body={"pinned": False})
+    assert request(base, f"/api/history/{older['id']}", token=token)[0] == 404
+    assert not (app.history.image_dir / older["file"]).exists()
+    # 履歴の記録を止められる
+    assert admin(app, "history/settings", {"enabled": False})[0] == 200
+    app.fake_clipboard.external_copy("not recorded")
+    time.sleep(0.3)
+    assert all(item.get("text") != "not recorded" for item in app.history.entries)
+    assert json.loads(app.config_path.read_text(encoding="utf-8"))["history_enabled"] is False
+
+
+def test_history_persists_across_restart(pro, tmp_path):
+    pro.fake_clipboard.external_copy("残るメモ")
+    time.sleep(0.3)
+    reloaded = server.ClipHistory(pro.history.path)
+    assert [entry["text"] for entry in reloaded.entries] == ["残るメモ"]
+
+
+def test_image_rules_apply_only_for_pro(app, monkeypatch, tmp_path):
+    app.image_dir = tmp_path / "pics"
+    monkeypatch.setattr(server, "LICENSE_PUBLIC_KEY", TEST_PUBLIC)
+    status, _, body = upload(app, tiny_png(), name="IMG_0001.png")
+    free_path = Path(as_json(body)["path"])
+    assert free_path.parent == app.image_dir and free_path.name.endswith("-IMG_0001.png")
+    app.apply_license(issue_key())
+    assert admin(app, "images/settings", {"template": "{bogus}"})[0] == 400
+    assert admin(app, "images/settings", {"template": "no tokens"})[0] == 400
+    assert admin(app, "images/settings", {"subfolder": "weekly"})[0] == 400
+    status, _, body = admin(app, "images/settings", {"subfolder": "date", "template": "{date}_{pc}_{name}"})
+    assert status == 200
+    settings = as_json(body)
+    assert settings["subfolder"] == "date" and settings["template"] == "{date}_{pc}_{name}" and settings["applied"]
+    assert settings["example"].startswith(time.strftime("%Y-%m-%d"))
+    status, _, body = upload(app, tiny_png(), name="IMG_0002.png")
+    pro_path = Path(as_json(body)["path"])
+    assert pro_path.parent == app.image_dir / time.strftime("%Y-%m-%d")
+    assert pro_path.name == f"{time.strftime('%Y%m%d')}_{server.safe_stem(app.pc_name)}_IMG_0002.png"
+    saved = json.loads(app.config_path.read_text(encoding="utf-8"))
+    assert saved["image_subfolder"] == "date" and saved["image_template"] == "{date}_{pc}_{name}"
+    # ライセンスを外すと既定に戻る（設定は保持）
+    app.remove_license()
+    status, _, body = upload(app, tiny_png(), name="IMG_0003.png")
+    assert Path(as_json(body)["path"]).parent == app.image_dir
+
+
+def test_render_image_name_and_template_validation():
+    now = time.strptime("2026-11-10 09:05:07", "%Y-%m-%d %H:%M:%S")
+    assert server.render_image_name("{date}-{time}-{name}", "IMG_0042.HEIC", "jpg", "pc", now) == "20261110-090507-IMG_0042.jpg"
+    assert server.render_image_name("{year}/{month}/{name}", "a.png", "png", "pc", now) == "2026_11_a.png"
+    assert server.render_image_name("{datetime} {pc}", "x.png", "png", "デスクトップ PC", now) == "20261110-090507 デスクトップ PC.png"
+    assert server.render_image_name("{name}", "...", "png", "pc", now) == "image.png"
+    assert server.validate_image_template("{date}-{name}") is None
+    assert "使えない" in server.validate_image_template("{foo}")
+    assert server.validate_image_template("") and server.validate_image_template("plain")
+    assert server.image_subfolder("date", now) == "2026-11-10" and server.image_subfolder("month", now) == "2026-11" and server.image_subfolder("none", now) == ""
+
+
+def test_hotkey_parsing():
+    assert server.parse_hotkey("Ctrl+Alt+V") == (0x0002 | 0x0001 | server.MOD_NOREPEAT, ord("V"))
+    assert server.parse_hotkey("ctrl + shift + f5") == (0x0002 | 0x0004 | server.MOD_NOREPEAT, 0x74)
+    assert server.parse_hotkey("Win+Left") == (0x0008 | server.MOD_NOREPEAT, 0x25)
+    assert server.parse_hotkey("Alt+1")[1] == ord("1")
+    for bad in ("V", "Ctrl+", "Ctrl+Alt", "Ctrl+Alt+V+B", "Ctrl+Alt+あ", "Ctrl+F99", ""):
+        with pytest.raises(ValueError):
+            server.parse_hotkey(bad)
+
+
+def test_hotkey_settings_and_actions(pro, monkeypatch):
+    app = pro
+    status, _, body = admin(app, "hotkeys", {"bindings": {"open_dashboard": "Ctrl+Alt+V", "restore_phone": "Ctrl+Alt+V"}})
+    assert status == 400 and "同じキー" in as_json(body)["message"]
+    assert admin(app, "hotkeys", {"bindings": {"restore_phone": "Ctrl+Alt+あ"}})[0] == 400
+    status, _, body = admin(app, "hotkeys", {"enabled": True, "bindings": {"restore_phone": "Ctrl+Shift+V"}})
+    assert status == 200
+    hotkeys = as_json(body)
+    assert hotkeys["bindings"]["restore_phone"] == "Ctrl+Shift+V" and hotkeys["bindings"]["open_dashboard"] == "Ctrl+Alt+C"
+    assert json.loads(app.config_path.read_text(encoding="utf-8"))["hotkeys"]["restore_phone"] == "Ctrl+Shift+V"
+    assert app.admin_status()["hotkeys"]["actions"]["restore_previous"]
+    # 動作: 履歴 a, b, c（c が最新）→ 1 つ前 = b → a → 先頭に戻る
+    for text in ("a", "b", "c"):
+        app.fake_clipboard.external_copy(text)
+        time.sleep(0.25)
+    app.hotkey_action("restore_previous")
+    assert app.fake_clipboard.text == "b"
+    app.hotkey_action("restore_previous")
+    assert app.fake_clipboard.text == "a"
+    app.hotkey_action("restore_previous")
+    assert app.fake_clipboard.text == "c"
+    # iPhone から届いた最後の内容に戻す
+    request(app.base, "/api/clip", method="POST", token=app.token, data=b"from phone")
+    app.fake_clipboard.external_copy("pc again")
+    time.sleep(0.3)
+    app.hotkey_action("restore_phone")
+    assert app.fake_clipboard.text == "from phone"
+    opened = []
+    monkeypatch.setattr(server.webbrowser, "open", lambda url: opened.append(url))
+    app.hotkey_action("open_dashboard")
+    assert opened == [f"http://127.0.0.1:{app.port}/pc"]
+    assert admin(app, "hotkeys", {"enabled": False})[0] == 200 and app.hotkeys_enabled is False
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows のクリップボード実装")
 def test_windows_clipboard_image_round_trip(tmp_path):
     clipboard = server.WindowsClipboard()
