@@ -324,3 +324,25 @@ a.btn { text-decoration: none; }
   background: var(--bg); color: var(--text); font: inherit; font-size: 16px;
 }
 .help .label, .help .text-input, .help .btn { margin-top: 8px; }
+
+/* 画像（PC → iPhone のプレビュー / iPhone → PC の送信） */
+.clipimage-wrap {
+  margin: 0; display: grid; gap: 6px; justify-items: center;
+  padding: 10px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line);
+}
+.clipimage-wrap.flash { animation: flash 0.9s ease-out; }
+.clipimage { max-width: 100%; max-height: clamp(160px, 38vh, 360px); border-radius: 8px; object-fit: contain; }
+.clipimage:not([src]) { display: none; }
+.clipimage-wrap figcaption:empty { display: none; }
+.progress { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.progress .bar { height: 100%; width: 0; background: var(--accent); border-radius: inherit; transition: width 0.15s ease; }
+.choice { display: grid; gap: 8px; }
+.choice label {
+  display: flex; align-items: flex-start; gap: 10px; min-height: 48px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer;
+}
+.choice label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.choice input { width: 20px; height: 20px; margin: 3px 0 0; accent-color: var(--accent); flex: none; }
+.choice-text { display: grid; gap: 1px; min-width: 0; }
+.choice-title { font-weight: 700; }
+.choice-sub { color: var(--muted); font-size: 0.85rem; }

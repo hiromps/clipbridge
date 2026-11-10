@@ -26,6 +26,9 @@
     updateCheckBtn: $('updateCheckBtn'),
     updateLink: $('updateLink'),
     updateHint: $('updateHint'),
+    imageLast: $('imageLast'),
+    imageDir: $('imageDir'),
+    openImagesBtn: $('openImagesBtn'),
     toast: $('toast'),
   };
 
@@ -53,6 +56,21 @@
     if (diff < 3600) return `${Math.floor(diff / 60)} 分前`;
     const date = new Date(epochSeconds * 1000);
     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  }
+
+  function formatBytes(n) {
+    if (!n) return '0 KB';
+    return n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1048576).toFixed(1)} MB`;
+  }
+
+  function renderImages(status) {
+    els.imageDir.textContent = status.image_dir || '—';
+    const last = status.last_image;
+    if (!last) { els.imageLast.textContent = ''; return; }
+    const notes = [formatBytes(last.size), relativeTime(last.received, status.now)];
+    if (!last.saved) notes.push('クリップボードのみ');
+    if (!last.clipboard) notes.push('クリップボードには入れられませんでした');
+    els.imageLast.textContent = `最後に受け取った画像: ${last.name}（${notes.join(' ・ ')}）`;
   }
 
   async function adminPost(action, body = {}) {
@@ -187,6 +205,7 @@
     }
     renderChecks(status.tailscale);
     renderUpdate(status);
+    renderImages(status);
     els.publicUrl.textContent = status.public_url || status.planned_url || '—';
     els.pairCode.textContent = status.pair_code;
     renderQr(status.pair_url);
@@ -291,6 +310,15 @@
       toast(lastStatus && lastStatus.frozen
         ? 'サーバーを停止しました。再開するにはデスクトップの ClipBridge を開いてください。'
         : 'サーバーを停止しました。再開するには ClipBridge.bat を実行してください。');
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  });
+
+  els.openImagesBtn.addEventListener('click', async () => {
+    try {
+      const result = await adminPost('images/open');
+      toast(`フォルダーを開きました: ${result.path}`);
     } catch (error) {
       toast(error.message, 'error');
     }

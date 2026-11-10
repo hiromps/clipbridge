@@ -54,6 +54,19 @@
       <p class="hint">使い方: PC で Ctrl+C すると iPhone の画面に表示され「iPhone にコピー」で取り込めます。iPhone でコピーした文字は「PC へ送る」で PC のクリップボードに入ります。</p>
     </section>
 
+    <section class="card" aria-labelledby="imagesTitle">
+      <div class="card-head">
+        <h2 id="imagesTitle">画像の受け渡し</h2>
+        <span id="imageLast" class="meta"></span>
+      </div>
+      <p class="lead">iPhone の「写真・画像を PC へ」で送った画像は、この PC のクリップボードに入ります（Ctrl+V で貼り付け）。iPhone 側で「PC に保存する」を選ぶと下のフォルダーにも保存されます。PC で画像をコピーする（Win+Shift+S のスクリーンショットなど）と iPhone の画面に表示され、iPhone にコピーしたり、長押しで写真に保存したりできます。</p>
+      <p class="hint">保存先: <code id="imageDir">—</code></p>
+      <div class="actions">
+        <button id="openImagesBtn" class="btn" type="button">保存フォルダーを開く</button>
+      </div>
+      <p class="hint">保存先を変えるには、設定ファイルに <code>"image_dir": "D:/ClipBridge"</code> のように追加して再起動します。</p>
+    </section>
+
     <section class="card" aria-labelledby="updateTitle">
       <div class="card-head">
         <h2 id="updateTitle">アップデート</h2>
