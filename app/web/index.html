@@ -127,10 +127,90 @@
         </div>
         <button id="addFromSettingsBtn" class="btn block" type="button">別の PC を追加する</button>
         <p class="hint">複数の PC を登録すると、画面上部の PC 名をタップして切り替えられます。</p>
+        <button id="guideBtn" class="btn block" type="button">セットアップガイド（ホーム画面・ショートカット）</button>
         <p id="updateNotice" class="hint" hidden></p>
         <button id="unpairBtn" class="btn ghost danger block" type="button">この PC の接続を解除</button>
         <p class="hint">解除すると、再接続には PC の画面に表示されているコードが必要です。</p>
       </section>
+    </section>
+
+    <!-- 初回セットアップ（ペアリング直後） -->
+    <section id="onboardView" class="view" hidden>
+      <div class="intro">
+        <p class="eyebrow" id="onboardEyebrow">初回セットアップ</p>
+        <h1 id="onboardTitle">接続できました</h1>
+        <p class="lead" id="onboardLead"></p>
+      </div>
+      <ol id="onboardDots" class="steps-dots" aria-label="進み具合"></ol>
+
+      <section class="card onboard-step" data-step="welcome" hidden>
+        <h2>これで、文字と画像が行き来します</h2>
+        <ul class="checks">
+          <li><span class="icon">✅</span><span>PC で Ctrl+C すると、この画面に「新着」として届きます。「iPhone にコピー」で取り込めます</span></li>
+          <li><span class="icon">✅</span><span>iPhone でコピーした文字は「PC へ送る」で PC のクリップボードに入ります</span></li>
+          <li><span class="icon">✅</span><span>写真・画像もどちらの向きにも送れます</span></li>
+        </ul>
+        <p class="hint">この画面を開いている間だけ同期します（iOS の仕様です）。次の 2 つを設定すると、もっと手軽になります。</p>
+      </section>
+
+      <section class="card onboard-step" data-step="home" hidden>
+        <h2>ホーム画面に追加（おすすめ）</h2>
+        <ol>
+          <li>Safari 下部の共有ボタン <span class="kbd">↑</span> をタップ</li>
+          <li>「ホーム画面に追加」を選ぶ</li>
+          <li>右上の「追加」をタップ</li>
+        </ol>
+        <p class="hint">追加したアプリは接続設定を引き継ぐので、コードの再入力は不要です。アイコンから開くだけで PC のクリップボードが見られます。</p>
+      </section>
+
+      <section class="card onboard-step" data-step="shortcut" hidden>
+        <h2>ショートカットで、どこからでも PC へ</h2>
+        <p class="lead">iPhone でコピーしたあと、この画面を開かずに PC へ送れます。背面タップや共有シートにも割り当てられます。</p>
+        <ol class="onboard-list">
+          <li>
+            <a id="shortcutAddBtn" class="btn primary block" href="#" target="_blank" rel="noopener noreferrer">ショートカットを追加する ↗</a>
+            <p class="hint">iCloud のページが開きます。「ショートカットを追加」を押してください。</p>
+          </li>
+          <li>
+            <p class="label">追加したショートカットを開き、次の 2 か所を置き換えます</p>
+            <div class="kv-copy">
+              <span class="label">URL</span>
+              <code id="shortcutUrlText"></code>
+              <button class="btn small" type="button" data-copy="shortcutUrlText">コピー</button>
+            </div>
+            <div class="kv-copy">
+              <span class="label">X-Token の値</span>
+              <code id="shortcutTokenText" class="secret" data-masked="1">••••••••••••</code>
+              <button id="shortcutTokenReveal" class="btn small" type="button">表示</button>
+              <button class="btn small" type="button" data-copy="shortcutTokenText">コピー</button>
+            </div>
+            <p class="hint">トークンはこの PC との接続の鍵です。ショートカット以外には貼らないでください。</p>
+          </li>
+          <li>
+            <p class="label">動作を確認</p>
+            <p class="hint">iPhone で何か文字をコピーしてから、ショートカットを実行してみてください。届くとここに表示されます。</p>
+            <p id="shortcutTestMsg" class="msg">まだ届いていません</p>
+          </li>
+        </ol>
+        <details class="help">
+          <summary>背面タップ・共有シートに割り当てる</summary>
+          <ol>
+            <li>背面タップ: 設定 → アクセシビリティ → タッチ → 背面タップ → ダブルタップ → このショートカットを選ぶ</li>
+            <li>共有シート: ショートカットアプリで ⓘ → 「共有シートに表示」をオン。文字を選択して共有 → ショートカット名をタップ</li>
+          </ol>
+        </details>
+      </section>
+
+      <section class="card onboard-step" data-step="done" hidden>
+        <h2>準備ができました</h2>
+        <p class="lead">PC で Ctrl+C した文字や画像がここに届き、iPhone からも送れます。設定はあとから「接続」カードの「セットアップガイド」で見直せます。</p>
+      </section>
+
+      <div class="onboard-nav">
+        <button id="onboardBack" class="btn" type="button">戻る</button>
+        <button id="onboardNext" class="btn primary" type="button">次へ</button>
+        <button id="onboardSkip" class="link" type="button">あとで設定する</button>
+      </div>
     </section>
 
     <!-- PC の追加 -->
