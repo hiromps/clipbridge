@@ -1013,6 +1013,41 @@ def test_pc_image_is_pushed_to_phone_and_downloadable(app):
     assert as_json(request(base, "/api/clip", token=token)[2])["image"] is None
 
 
+def test_dashboard_shows_and_sends_clipboard(app):
+    """PC 画面にも現在のクリップボード（本文・画像）が出て、PC 画面から文字を送れる。"""
+    base = app.base
+    app.fake_clipboard.external_copy("PC でコピーした文")
+    time.sleep(0.3)
+    status, _, body = request(base, "/pc/api/clip")
+    assert status == 200 and as_json(body)["text"] == "PC でコピーした文" and as_json(body)["source"] == "pc"
+    admin_clip = app.admin_status()["clip"]
+    assert admin_clip["hash"] == as_json(body)["hash"] and admin_clip["source"] == "pc" and admin_clip["kind"] == "text"
+    # PC 画面から送ると source は pc（iPhone 側で新着になる）
+    conn = http.client.HTTPConnection("127.0.0.1", app.port, timeout=5)
+    conn.request("GET", f"/api/events?t={app.token}")
+    response = conn.getresponse()
+    read_sse_event(response)
+    status, _, body = admin(app, "clip", {"text": "PC 画面から"})
+    assert status == 200 and as_json(body)["length"] == len("PC 画面から") and app.fake_clipboard.text == "PC 画面から"
+    _, event = read_sse_event(response)
+    conn.close()
+    assert event["text"] == "PC 画面から" and event["source"] == "pc"
+    assert admin(app, "clip", {"text": "   "})[0] == 400
+    assert admin(app, "clip", {})[0] == 400
+    # 画像も PC 画面用の経路で取れる
+    png = tiny_png(3, 3)
+    app.fake_clipboard.external_copy_image(png)
+    time.sleep(0.3)
+    clip = as_json(request(base, "/pc/api/clip")[2])
+    assert clip["kind"] == "image" and clip["image"]["width"] == 3
+    status, headers, body = request(base, "/pc/api/clip/image?id=" + clip["image"]["id"])
+    assert status == 200 and body == png and headers["Content-Type"] == "image/png"
+    assert request(base, "/pc/api/clip/image?id=stale")[0] == 404
+    # ループバック以外（プロキシ経由）からは見えない
+    assert request(base, "/pc/api/clip", headers={"X-Forwarded-For": "100.64.0.9"})[0] == 404
+    assert request(base, "/pc/api/clip/image", headers={"X-Forwarded-For": "100.64.0.9"})[0] == 404
+
+
 def test_copied_image_file_is_treated_as_image(app, tmp_path):
     """エクスプローラーで画像ファイルをコピーした場合も iPhone に画像として届く。画像以外のファイルは other。"""
     photo = tmp_path / "photo.png"

@@ -52,7 +52,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-__version__ = "2.3.1"
+__version__ = "2.4.0"
 APP_NAME = "ClipBridge"
 FROZEN = bool(getattr(sys, "frozen", False))  # PyInstaller でビルドした exe 版か
 ROOT = Path(__file__).resolve().parent
@@ -2213,14 +2213,16 @@ class ClipBridgeApp:
                 pass
             time.sleep(self.watch_interval)
 
-    def write_clipboard(self, text: str) -> dict:
+    def write_clipboard(self, text: str, source: str = "phone") -> dict:
+        """テキストを PC のクリップボードに入れる。source は phone（iPhone から）か pc（PC 画面から）。"""
         with self._clip_lock:
             self.clipboard.write(text)
+            self._own_sequence = self.clipboard.sequence()
         normalized = normalize_newlines(text)
         self._store_image(None)
-        self.state.set(normalized, "text" if normalized else "empty", "phone")
+        self.state.set(normalized, "text" if normalized else "empty", source)
         self._cycle_index = 0
-        self.record_text(normalized, "phone")
+        self.record_text(normalized, source)
         return self.state.snapshot()
 
     def receive_image(self, data: bytes, original_name: str, save: bool = True) -> dict:
@@ -2445,7 +2447,10 @@ class ClipBridgeApp:
                 "path": str(startup_path) if startup_path else None,
             },
             "clipboard_backend": self.clipboard.name,
-            "clip": {"kind": snapshot["kind"], "length": snapshot["length"], "updated": snapshot["updated"]},
+            "clip": {
+                "kind": snapshot["kind"], "length": snapshot["length"], "updated": snapshot["updated"],
+                "hash": snapshot["hash"], "source": snapshot["source"], "image": snapshot["image"],
+            },
             "image_dir": str(self.image_dir),
             "last_image": self.last_image,
             "pro": self.pro,
@@ -2791,6 +2796,16 @@ def make_handler(app: ClipBridgeApp):
                     return self._file("pc.html", "text/html; charset=utf-8")
                 if path == "/pc/api/status":
                     return self._json(200, app.admin_status())
+                if path == "/pc/api/clip":
+                    # PC 画面の「PC のクリップボード」カード用（本文つき）
+                    return self._json(200, app.state.snapshot())
+                if path == "/pc/api/clip/image":
+                    current = app.current_image()
+                    wanted = query.get("id")
+                    if current is None or (wanted and wanted != current[1]["id"]):
+                        return self._error(404, "no_image", "クリップボードに画像がありません")
+                    data, info = current
+                    return self._send(200, data, info["type"])
                 if path == "/pc/client":
                     return self._redirect(f"/?t={app.token}")
             return self._not_found()
@@ -2983,6 +2998,20 @@ def make_handler(app: ClipBridgeApp):
                 return self._error(400, "bad_request", "JSON が不正です")
             if action == "serve":
                 return self._json(200, app.ensure_serve())
+            if action == "clip":
+                # PC 画面から文字を入れる（PC のクリップボードに入り、iPhone には「新着」として届く）
+                text = data.get("text")
+                if not isinstance(text, str) or not text.strip():
+                    return self._error(400, "bad_request", "送る文字を入力してください")
+                if len(text.encode("utf-8")) > MAX_BYTES:
+                    return self._error(413, "too_large", "1MB を超えています")
+                try:
+                    snapshot = app.write_clipboard(text, source="pc")
+                except Exception as exc:  # noqa: BLE001 - 内容は出さない
+                    app.log(f"clipboard write failed: {type(exc).__name__}")
+                    return self._error(500, "clipboard", "PC のクリップボードへ書き込めませんでした")
+                app.log(f"clipboard written from dashboard: {len(text)} chars")
+                return self._json(200, {"ok": True, "length": len(text), "hash": snapshot["hash"]})
             if action == "pair-code":
                 code = app.pairing.rotate()
                 return self._json(200, {"ok": True, "pair_code": code})
