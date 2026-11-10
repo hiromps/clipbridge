@@ -580,8 +580,14 @@
     els.clipImageWrap.hidden = !hasImage;
     // iOS の Safari では Web ページから写真に直接保存できないため、確実に使える「画像を長押し」を案内する
     els.shareImageBtn.hidden = !(hasImage && navigator.share && navigator.canShare);
-    els.imageSaveHint.hidden = !hasImage;
-    if (!hasImage || changed) els.imageSaveHint.textContent = SAVE_HINT;
+    if (data.kind === 'other') {
+      // ファイルの複数コピーや独自形式。どうすれば画像が届くかを案内する
+      els.imageSaveHint.textContent = OTHER_HINT;
+      els.imageSaveHint.hidden = false;
+    } else {
+      els.imageSaveHint.hidden = !hasImage;
+      if (!hasImage || changed) els.imageSaveHint.textContent = SAVE_HINT;
+    }
     if (data.kind === 'text' && data.text) {
       els.clipText.textContent = data.text;
       els.clipText.classList.remove('empty');
@@ -591,7 +597,7 @@
       els.clipText.classList.add('empty');
       els.copyBtn.disabled = !hasImage;
     } else {
-      els.clipText.textContent = data.kind === 'other' ? '（テキスト以外の内容です）' : '（空です）';
+      els.clipText.textContent = data.kind === 'other' ? '（文字でも画像でもない内容です）' : '（空です）';
       els.clipText.classList.add('empty');
       els.copyBtn.disabled = true;
     }
@@ -612,6 +618,7 @@
   setInterval(() => { if (current) els.clipMeta.textContent = metaText(current); }, 10000);
 
   const SAVE_HINT = '写真に保存するには、上の画像を長押しして「“写真”に保存」を選びます。';
+  const OTHER_HINT = 'PC のクリップボードには文字でも画像でもないもの（複数のファイル、文書の一部など）が入っています。画像を送るには、Win+Shift+S のスクリーンショット、ブラウザーの「画像をコピー」、またはエクスプローラーで画像ファイルを 1 つコピーしてください。';
 
   // PC のクリップボードにある画像を取り寄せて表示する（コピー・共有はこの blob を使う）
   function dropPreview() {

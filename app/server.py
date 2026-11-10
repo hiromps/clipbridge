@@ -52,7 +52,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-__version__ = "2.3.0"
+__version__ = "2.3.1"
 APP_NAME = "ClipBridge"
 FROZEN = bool(getattr(sys, "frozen", False))  # PyInstaller でビルドした exe 版か
 ROOT = Path(__file__).resolve().parent
@@ -110,6 +110,7 @@ class WindowsClipboard:
     CF_BITMAP = 2
     CF_DIB = 8
     CF_UNICODETEXT = 13
+    CF_HDROP = 15
     GMEM_MOVEABLE = 0x0002
     PROPERTY_TAG_ORIENTATION = 0x0112
 
@@ -148,8 +149,12 @@ class WindowsClipboard:
         kernel32.GlobalFree.restype = wintypes.HGLOBAL
         kernel32.GlobalSize.argtypes = [wintypes.HGLOBAL]
         kernel32.GlobalSize.restype = ctypes.c_size_t
+        shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+        shell32.DragQueryFileW.argtypes = [wintypes.HANDLE, wintypes.UINT, wintypes.LPWSTR, wintypes.UINT]
+        shell32.DragQueryFileW.restype = wintypes.UINT
         self._user32 = user32
         self._kernel32 = kernel32
+        self._shell32 = shell32
 
     def sequence(self) -> int:
         """クリップボードが書き換わるたびに増える番号。中身を読まずに変化を検知できる。"""
@@ -162,8 +167,28 @@ class WindowsClipboard:
             time.sleep(0.025)
         raise ClipboardError("クリップボードが他のアプリに使用中です")
 
+    def _dropped_image(self) -> Path | None:
+        """エクスプローラーなどでコピーされたファイル（CF_HDROP）の先頭が画像なら、そのパスを返す。クリップボードは開いた状態で呼ぶ。"""
+        if not self._user32.IsClipboardFormatAvailable(self.CF_HDROP):
+            return None
+        handle = self._user32.GetClipboardData(self.CF_HDROP)
+        if not handle or self._shell32.DragQueryFileW(handle, 0xFFFFFFFF, None, 0) < 1:
+            return None
+        buffer = self._ctypes.create_unicode_buffer(32768)
+        if not self._shell32.DragQueryFileW(handle, 0, buffer, 32768):
+            return None
+        path = Path(buffer.value)
+        try:
+            if not path.is_file() or path.stat().st_size > MAX_IMAGE_BYTES:
+                return None
+            with path.open("rb") as file:
+                head = file.read(64)
+        except OSError:
+            return None
+        return path if sniff_image(head) else None
+
     def read(self) -> tuple[str, str]:
-        """(テキスト, 種別) を返す。種別は text / empty / image / other（ファイルなど）。"""
+        """(テキスト, 種別) を返す。種別は text / empty / image / other（画像以外のファイルなど）。"""
         self._open()
         try:
             if not self._user32.IsClipboardFormatAvailable(self.CF_UNICODETEXT):
@@ -171,6 +196,8 @@ class WindowsClipboard:
                     kind = "empty"
                 elif self._user32.IsClipboardFormatAvailable(self.CF_DIB) or self._user32.IsClipboardFormatAvailable(self.CF_BITMAP):
                     kind = "image"
+                elif self._dropped_image() is not None:
+                    kind = "image"  # 画像ファイルのコピーも画像として扱う
                 else:
                     kind = "other"
                 return "", kind
@@ -339,7 +366,7 @@ class WindowsClipboard:
             self._user32.CloseClipboard()
 
     def read_image(self) -> bytes:
-        """クリップボードの画像を PNG のバイト列で返す。PNG 形式があればそのまま、なければビットマップを GDI+ で PNG にする。"""
+        """クリップボードの画像を返す。PNG 形式があればそのまま、ビットマップは GDI+ で PNG に、画像ファイルのコピーはファイルの中身をそのまま。"""
         ctypes = self._ctypes
         gdiplus = self._gdip()
         bitmap = ctypes.c_void_p()
@@ -356,7 +383,13 @@ class WindowsClipboard:
                     if data.startswith(PNG_SIGNATURE):
                         return data
             if not self._user32.IsClipboardFormatAvailable(self.CF_BITMAP):
-                raise ClipboardError("クリップボードに画像がありません")
+                dropped = self._dropped_image()
+                if dropped is None:
+                    raise ClipboardError("クリップボードに画像がありません")
+                try:
+                    return dropped.read_bytes()
+                except OSError as exc:
+                    raise ClipboardError(f"コピーされた画像ファイルを読めません: {type(exc).__name__}") from exc
             hbitmap = self._user32.GetClipboardData(self.CF_BITMAP)
             if not hbitmap:
                 raise ClipboardError("クリップボードの画像を読み取れません")
@@ -427,6 +460,16 @@ class MemoryClipboard:
         self.text = ""
         self.kind = "image"
         self.image_data = data
+        self._sequence += 1
+
+    def external_copy_file(self, path: Path) -> None:
+        """PC 側でエクスプローラーのファイルをコピーしたことを模倣する（画像ファイルなら画像、それ以外は other）。"""
+        data = path.read_bytes()
+        self.text = ""
+        if sniff_image(data):
+            self.kind, self.image_data = "image", data
+        else:
+            self.kind, self.image_data = "other", None
         self._sequence += 1
 
 
