@@ -2,105 +2,225 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#eceef1">
-  <meta name="description" content="iPhoneとWindowsのクリップボードを、スマートに。ClipBridgeは、文章・URL・画像を自分の端末間で受け渡すツール。PCでコピーした文字や画像がiPhoneの画面にすぐ届き、iPhoneのコピーや写真もPCへ送れます。">
-  <meta property="og:title" content="ClipBridge — iPhoneとWindowsのクリップボードを、スマートに">
-  <meta property="og:description" content="コピーした文字を、いつもの端末へ。iPhoneとWindowsのための、シンプルなテキスト共有。">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="description" content="ClipBridge は iPhone と Windows の間でクリップボードの文字と画像を受け渡す無料ツール。PC で Ctrl+C した内容が iPhone の画面に届き、iPhone のコピーや写真も PC へ送れます。通信は自分の Tailscale ネットワークの中だけ。Python 不要。">
+  <meta property="og:title" content="ClipBridge — iPhone と Windows のクリップボードを、ひとつに。">
+  <meta property="og:description" content="PC でコピーした文字や画像が iPhone に届く。iPhone の文字も写真も PC へ。自分の端末だけでつながる、無料の小さな橋。">
   <meta property="og:type" content="website">
-  <meta property="og:image" content="https://clipbridge-ashen.vercel.app/assets/og.png">
+  <meta property="og:image" content="https://clipbridge-ashen.vercel.app/assets/og-v2.png">
   <meta property="og:url" content="https://clipbridge-ashen.vercel.app/">
-  <link rel="canonical" href="https://clipbridge-ashen.vercel.app/">
   <meta name="twitter:card" content="summary_large_image">
-  <title>ClipBridge | iPhoneとWindowsのクリップボードを、スマートに</title>
-  <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="canonical" href="https://clipbridge-ashen.vercel.app/">
+  <link rel="icon" type="image/png" href="assets/icon-180.png">
+  <link rel="apple-touch-icon" href="assets/icon-180.png">
   <link rel="stylesheet" href="styles.css">
+  <title>ClipBridge — iPhone と Windows のクリップボードを、ひとつに。</title>
 </head>
 <body>
   <a class="skip" href="#main">本文へ移動</a>
-  <aside class="sidebar">
-    <a class="wordmark" href="#top" aria-label="ClipBridge ホーム"><img src="assets/mark.svg" width="36" height="28" alt="">ClipBridge</a>
-    <nav aria-label="メインナビゲーション">
-      <a class="nav-link active" href="#top" aria-current="location"><span>ホーム</span><span aria-hidden="true">↗</span></a>
-      <a class="nav-link" href="#experience">できること</a>
-      <a class="nav-link" href="#how-it-works">使い方</a>
-      <a class="nav-link" href="#setup">はじめ方</a>
-      <a class="nav-link" href="#faq">よくある質問</a>
+
+  <header class="topbar">
+    <a class="brand" href="#top"><img src="assets/icon-180.png" alt="" width="30" height="30"><span>ClipBridge</span></a>
+    <nav class="nav" aria-label="ページ内">
+      <a href="#features">できること</a>
+      <a href="#how">使い方</a>
+      <a href="#setup">はじめ方</a>
+      <a href="#faq">FAQ</a>
     </nav>
-    <a class="pill sidebar-cta" href="#setup">セットアップを始める <span aria-hidden="true">↗</span></a>
-    <div class="sidebar-bottom"><span class="eyebrow">MADE FOR YOUR EVERYDAY</span><p>iPhone <span aria-hidden="true">↔</span> Windows</p><a href="https://github.com/hiromps/clipbridge" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a></div>
-  </aside>
-  <div class="mobile-header"><a class="wordmark" href="#top"><img src="assets/mark.svg" width="32" height="26" alt="">ClipBridge</a><a class="pill" href="#setup">はじめる <span aria-hidden="true">↗</span></a></div>
+    <div class="topbar-actions">
+      <span class="pill ok">v2.2.0 ・ 無料</span>
+      <a class="btn primary" href="https://github.com/hiromps/clipbridge/releases/latest/download/ClipBridge-Windows.zip">ダウンロード</a>
+    </div>
+  </header>
+
   <main id="main">
+    <!-- ヒーロー -->
     <section class="hero" id="top" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <div class="eyebrow hero-eyebrow"><span class="live-dot" aria-hidden="true"></span> A LITTLE BRIDGE, A SMARTER DAY</div>
-        <h1 id="hero-title"><span class="keep">iPhoneとWindowsの</span><br><span class="muted-title">クリップボードを、</span><br><mark>スマートに</mark></h1>
-        <p class="hero-description">コピーした文字を、いつもの端末へ。<br>iPhoneとWindowsの間で、文章やURLを<br class="desktop-br">シンプルに受け渡せます。</p>
-        <div class="hero-actions"><a class="pill dark" href="#setup">セットアップを始める <span aria-hidden="true">↗</span></a><a class="text-link" href="#how-it-works"><span class="play-icon" aria-hidden="true">▶</span> 操作を見てみる</a></div>
-        <p class="hero-footnote">すべて無料 <span>·</span> Pythonのインストール不要 <span>·</span> Tailscaleで接続</p>
-      </div>
-      <figure class="hero-figure"><img src="assets/hero.svg" alt="iPhoneのコントロールセンターから、Windowsのクリップボードへ文字を送る操作イメージ" width="900" height="840" fetchpriority="high"><figcaption>設定後は、コントロールセンターからPCへ</figcaption></figure>
-      <div class="hero-bottom"><span>LESS SWITCHING. MORE FLOW.</span><a href="#experience" aria-label="できることを見る">SCROLL TO EXPLORE <span aria-hidden="true">↓</span></a></div>
-    </section>
-
-    <section class="section experience" id="experience" aria-labelledby="experience-title">
-      <div class="section-heading"><span class="eyebrow">SMALL ACTIONS, SMOOTH CONNECTIONS</span><h2 id="experience-title">手元のひとことが、<br><span class="muted-title">次の作業に</span>つながる</h2><p>スマホで見つけたURLも、外出先で書いたメモも。<br>文字だけを、使いたい端末へ。</p></div>
-      <div class="use-cases">
-        <article class="use-case"><div class="case-icon blue" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="m12 20 8-8m-10 5-2 2a5 5 0 0 0 7 7l4-4a5 5 0 0 0 0-7m-6 2a5 5 0 0 1 0-7l4-4a5 5 0 0 1 7 7l-2 2"/></svg></div><span class="case-no">01 / LINKS</span><h3>気になったページを、PCで</h3><p>iPhoneで見つけたURLを送って、<br>大きな画面で続きを調べる。</p></article>
-        <article class="use-case"><div class="case-icon green" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M9 5h14a2 2 0 0 1 2 2v20H7V7a2 2 0 0 1 2-2Zm3 7h8m-8 5h8m-8 5h5"/></svg></div><span class="case-no">02 / NOTES</span><h3>手元のメモを、仕事の続きへ</h3><p>移動中にまとめた文章を送って、<br>Windowsで編集を続ける。</p></article>
-        <article class="use-case"><div class="case-icon sand" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M5 8h22v15H5Zm7 19h8m-4-4v4M11 13h10m-10 5h7"/></svg></div><span class="case-no">03 / TEXT</span><h3>PCの文章を、iPhoneへ</h3><p>Windowsでコピーした文字を、<br>iPhone側のボタンで取り出す。</p></article>
-      </div>
-    </section>
-
-    <section class="section demo-section" id="how-it-works" aria-labelledby="demo-title">
-      <div class="section-heading split-heading"><div><span class="eyebrow">COPY. TAP. PASTE.</span><h2 id="demo-title">いつものコピーに、<br><mark>ひとつのタップ</mark>を</h2></div><p>iPhoneでコピーしたら、コントロールセンターへ。<br>「PCへ送る」をタップし、Windowsで貼り付け。<br>設定後の操作は、これだけです。</p></div>
-      <div class="interactive-demo" aria-label="送信の操作デモ">
-        <div class="demo-topline"><span class="eyebrow">TRY THE FLOW</span><span class="demo-label">操作デモ · 実際の端末には送信しません</span></div>
-        <div class="sample-tabs" role="group" aria-label="サンプルを選ぶ"><button type="button" data-sample="memo" aria-pressed="true">メモ</button><button type="button" data-sample="url" aria-pressed="false">URL</button><button type="button" data-sample="text" aria-pressed="false">文章</button></div>
-        <div class="demo-devices">
-          <div class="demo-phone"><div class="phone-island" aria-hidden="true"></div><div class="device-eyebrow">iPhone</div><p class="demo-app-label">コピーしたテキスト</p><div class="demo-source" id="demo-source">次の打ち合わせでは、<br>新しいアイデアを3つ持ち寄る</div><button class="demo-send" id="demo-send" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 15v6h16v-6"/></svg>PCへ送る<span>タップして試す</span></button><div class="phone-home" aria-hidden="true"></div></div>
-          <div class="demo-connection" aria-hidden="true"><span></span><div>↗</div><span></span></div>
-          <div class="demo-pc"><div class="pc-toolbar"><i></i><i></i><i></i><span>Windows · クリップボード</span></div><div class="pc-body"><span class="eyebrow">READY TO PASTE</span><div id="demo-destination" class="demo-destination"><span class="placeholder">ここに、コピーした文字が届きます</span></div><p id="demo-result" class="demo-result" role="status" aria-live="polite">iPhone側の「PCへ送る」を押してください</p></div><div class="pc-base" aria-hidden="true"></div></div>
+        <p class="eyebrow">iPhone × Windows ・ クリップボード共有</p>
+        <h1 id="hero-title">iPhone と Windows の<br>クリップボードを、ひとつに。</h1>
+        <p class="lead">PC で Ctrl+C した文字や画像が、開いている iPhone の画面にすぐ届きます。iPhone でコピーした文字や写真も、ボタンひとつで PC のクリップボードへ。自分の端末どうしだけでつながる、小さな橋です。</p>
+        <div class="actions">
+          <a class="btn primary big" href="https://github.com/hiromps/clipbridge/releases/latest/download/ClipBridge-Windows.zip">Windows アプリをダウンロード（無料）</a>
+          <a class="btn big" href="#setup">はじめ方を見る</a>
         </div>
-        <div class="demo-caption"><span class="step-pill">01 コピーする</span><span aria-hidden="true">→</span><span class="step-pill">02 PCへ送る</span><span aria-hidden="true">→</span><span class="step-pill">03 PCで貼り付け</span></div>
+        <ul class="checks hero-checks">
+          <li><span class="icon">✅</span><span>すべて無料。Python やコマンドの操作は不要</span></li>
+          <li><span class="icon">✅</span><span>通信は自分の Tailscale ネットワークの中だけ。クラウドに内容を置きません</span></li>
+          <li><span class="icon">✅</span><span>複数の PC も、iPhone のアイコン 1 つで切り替え</span></li>
+        </ul>
       </div>
-      <p class="section-note">ショートカットの追加とコントロールセンターへの登録は、初回にiPhoneで設定します。</p>
+      <figure class="hero-figure">
+        <div class="phone"><img src="assets/phone-main.png" alt="ClipBridge の iPhone 画面。PC でコピーした文字が「新着」として表示され、「iPhone にコピー」ボタンと、iPhone から PC へ送る操作が並んでいる" width="780" height="1688" fetchpriority="high"></div>
+        <figcaption>実際の iPhone 画面（表示内容はサンプル）</figcaption>
+      </figure>
     </section>
 
-    <section class="section app-section" aria-labelledby="app-title">
-      <div class="app-copy"><span class="eyebrow">JUST WHAT YOU NEED</span><h2 id="app-title">迷わず使える、<br><span class="muted-title">小さな</span>クリップボード</h2><p>送る、取り出す、接続を確かめる。<br>毎日の操作を、ひとつの画面にまとめました。</p><ul class="feature-list"><li><span aria-hidden="true">↗</span><div><h3>どのPCにつながっているか、ひと目で</h3><p>接続先と状態を画面上部に表示。</p></div></li><li><span aria-hidden="true">✓</span><div><h3>届いたことまで、確かめられる</h3><p>送受信の結果と時刻を表示。初回はテスト送信も。</p></div></li><li><span aria-hidden="true">−</span><div><h3>設定が済んだら、すっきりと</h3><p>完了した準備項目や初回の案内は非表示に。</p></div></li></ul></div>
-      <figure class="app-figure"><div class="screenshot-tape" aria-hidden="true"></div><div class="screenshot-frame"><img src="assets/app-screen.png" alt="ClipBridgeのiPhone画面。接続先PCの状態と、PCへ送る・iPhoneへ取るボタンを表示" width="390" height="844" loading="lazy"></div><figcaption>ClipBridgeの実際の画面 · 表示内容はサンプル</figcaption></figure>
-    </section>
-
-    <section class="section setup-section" id="setup" aria-labelledby="setup-title">
-      <div class="section-heading"><span class="eyebrow">LET’S GET CONNECTED</span><h2 id="setup-title">最初の準備で、<br><mark>毎日の操作をシンプルに</mark></h2><p>用意するのは、iPhoneとWindows PC。<br>PC側から順番に設定していきましょう。</p></div>
-      <div class="requirements"><span class="tiny-label">NEEDS</span><span>Windows 10 / 11 · 64ビット</span><span>iPhone</span><span>Tailscale</span><span>すべて無料</span></div>
-      <div class="setup-steps">
-        <article class="setup-step"><div class="step-index">01</div><div class="setup-step-content"><span class="eyebrow">ON YOUR WINDOWS PC</span><h3>アプリを開くと、ブラウザーに案内が出ます</h3><p>無料のWindowsアプリをダウンロードして展開し、ClipBridge.exeを開きます。Pythonの個別インストールやコマンド入力は不要。ブラウザーに開く「PCセットアップ画面」がTailscaleの状態を確認し、HTTPS公開まで自動で設定します。</p><div class="button-row"><a class="pill dark" href="https://github.com/hiromps/clipbridge/releases/latest/download/ClipBridge-Windows.zip">無料のWindowsアプリをダウンロード <span aria-hidden="true">↓</span></a><a class="text-link" href="https://github.com/hiromps/clipbridge" target="_blank" rel="noopener noreferrer">GitHubで見る ↗</a></div><details class="setup-details"><summary>PCの設定手順を見る <span aria-hidden="true">＋</span></summary><ol><li>ZIPを展開し、ClipBridge.exeをダブルクリックします。アプリは自動でこのPC（AppData）に保存され、デスクトップにショートカットができます。</li><li>ブラウザーに「PCセットアップ画面」が開きます。<a href="https://tailscale.com/download/windows" target="_blank" rel="noopener noreferrer">Windows用Tailscale</a>をインストールし、ログインして接続します。</li><li>赤い項目があれば画面の案内に従います（Tailscale管理画面でMagicDNSとHTTPS証明書を有効にするなど）。</li><li>すべて緑になると、QRコードと6桁のペアリングコードが表示されます。</li></ol><p>Windows 10 / 11の64ビットPC向けです。現在のアプリにコード署名はなく、Windowsが発行元を確認できない旨を表示する場合があります。接続情報は更新後も引き継がれます。</p></details></div></article>
-        <article class="setup-step"><div class="step-index">02</div><div class="setup-step-content"><span class="eyebrow">ON YOUR IPHONE</span><h3>iPhoneを、同じネットワークへ</h3><p>App StoreからTailscaleを入れ、PCと同じアカウントでログイン。VPN接続をオンにしたら、PCセットアップ画面に表示されるQRコードをカメラで読み取ります。</p><a class="pill white" href="https://apps.apple.com/jp/app/tailscale/id1470499037" target="_blank" rel="noopener noreferrer"><svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 18h4"/></svg>App StoreでTailscaleを開く ↗</a><p class="setup-note">VPN構成の追加を求められたら許可してください。QRコードを読めないときは、表示されたURLをSafariで開いて6桁のコードを入力します。</p></div></article>
-        <article class="setup-step"><div class="step-index">03</div><div class="setup-step-content"><span class="eyebrow">MAKE IT ONE TAP AWAY</span><h3>ホーム画面に追加する</h3><p>Safariの共有ボタンから「ホーム画面に追加」。以後はホーム画面のClipBridgeを開くだけで、PCでコピーした文字が届き、iPhoneのコピーをPCへ送れます。接続設定は引き継がれます。</p><details class="setup-details"><summary>使い方を見る <span aria-hidden="true">＋</span></summary><ol><li>PCでCtrl+Cすると、iPhoneの画面に「新着」として表示されます。「iPhoneにコピー」で取り込みます。</li><li>iPhoneでコピーした文字は「iPhoneのコピー内容をPCへ送る」→「ペースト」でPCのクリップボードに入ります。</li><li>画面を開いている間だけ同期します（iOSの仕様で、バックグラウンドでは動きません）。</li></ol><p>アップデートはPCセットアップ画面の「アップデートして再起動」から。GitHub Releasesから取得し、サイズとSHA-256を検証してから入れ替えます。</p></details></div></article>
+    <!-- できること -->
+    <section class="section" id="features" aria-labelledby="features-title">
+      <div class="section-head">
+        <h2 id="features-title">できること</h2>
+        <p class="lead">文字と画像を、いつも使っている端末へ。操作は画面のボタンだけです。</p>
       </div>
-      <div class="setup-hint"><span aria-hidden="true">i</span><p>無料アプリには、Tailscaleの自動チェックと修復、QR／コードによるペアリング、更新の確認と適用が含まれます。このLPから自動インストールは行いません。利用中はPCのClipBridgeを起動したまま、両方のTailscaleを接続しておいてください。</p></div>
+      <div class="grid features">
+        <article class="card feature">
+          <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M12 6v8m-3-3 3 3 3-3"/></svg></div>
+          <h3>PC の文字を、iPhone へ</h3>
+          <p>PC で Ctrl+C すると、iPhone の画面に「新着」として届きます。「iPhone にコピー」をタップすれば手元に。URL、メモ、コード、何でも。</p>
+        </article>
+        <article class="card feature">
+          <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="13" rx="2.5"/><path d="M8 21h8M12 14V8m-3 3 3-3 3 3"/></svg></div>
+          <h3>iPhone の文字を、PC へ</h3>
+          <p>iPhone でコピーした文字は「PC へ送る」で PC のクリップボードに入ります。貼り付け欄にペーストするだけでも自動で送信。あとは PC で Ctrl+V。</p>
+        </article>
+        <article class="card feature">
+          <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-8 9"/></svg></div>
+          <h3>写真・画像も、どちらの向きにも</h3>
+          <p>写真ライブラリから選んで PC へ。「PC に保存する」か「クリップボードだけ」かを選べます。PC でコピーしたスクリーンショットは iPhone に届き、写真に保存できます。</p>
+        </article>
+        <article class="card feature">
+          <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2.5" y="5" width="12" height="9" rx="2"/><rect x="11" y="10" width="10.5" height="8" rx="2"/><path d="M6 18h4"/></svg></div>
+          <h3>複数の PC を、1 つのアイコンで</h3>
+          <p>iPhone 側はホーム画面のアイコン 1 つのまま。上部の PC 名をタップして接続先を切り替えます。同じ Tailscale ネットワークの PC は自動で見つかります。</p>
+        </article>
+      </div>
     </section>
 
-    <section class="section faq-section" id="faq" aria-labelledby="faq-title"><div class="section-heading"><span class="eyebrow">GOOD TO KNOW</span><h2 id="faq-title">使い始める前に</h2></div><div class="faq-list">
-      <details><summary>コピーするだけで、自動的に同期されますか<span aria-hidden="true">＋</span></summary><p>常時自動同期する仕組みではありません。PCでコピーした内容は開いているiPhoneの画面に自動で届きますが、iPhoneからPCへは画面のボタンで送信します。iOSの制約により、ほかのアプリでのコピーをバックグラウンドで監視することはできません。</p></details>
-      <details><summary>iPhoneに何をインストールしますか<span aria-hidden="true">＋</span></summary><p>インストールするアプリはTailscaleだけです。ClipBridgeの画面はSafariで利用でき、ホーム画面にも追加できます。</p></details>
-      <details><summary>PCの電源を切っていても使えますか<span aria-hidden="true">＋</span></summary><p>利用するWindows PCの電源を入れ、ClipBridgeを起動しておく必要があります。PCがスリープ中やTailscaleが未接続の場合、送受信できません。</p></details>
-      <details><summary>同じWi-Fiにつなぐ必要はありますか<span aria-hidden="true">＋</span></summary><p>両端末が同じTailscaleネットワークに接続できていれば、同じWi-Fiでなくても利用できます。インターネット接続と、PC側のHTTPS公開設定が必要です。</p></details>
-      <details><summary>複数のPCで使い分けられますか<span aria-hidden="true">＋</span></summary><p>使えます。iPhone側はホーム画面のアイコン1つのまま、画面上部のPC名をタップして接続先を切り替えます。「PCを追加」を押すと同じTailscaleネットワークでClipBridgeが動いているPCが一覧に出るので、選んでそのPCの画面に表示された6桁のコードを入力するだけです。</p></details>
-      <details><summary>写真やファイルも送れますか<span aria-hidden="true">＋</span></summary><p>写真・画像は送れます。iPhoneの「写真・画像を選んで送る」から選んだ画像は、PCの「ピクチャ › ClipBridge」に保存してクリップボードにも入れるか、保存せずクリップボードだけに入れる（そのままCtrl+Vで貼り付け）かを選べます。PCで画像をコピーすると、iPhoneの画面に表示され、長押しして「“写真”に保存」で写真に残せます（「iPhoneにコピー」で貼り付け用にも）。画像以外のファイルの共有には対応していません。</p></details>
-      <details><summary>接続が切れた・コードを求められたら<span aria-hidden="true">＋</span></summary><p>PCセットアップ画面に表示されている6桁のコードを入力するか、QRコードをもう一度読み取ります。コードは1回使うたびに新しくなります。ホーム画面に追加した版は接続設定を引き継ぐので、再入力は不要です。</p></details>
-      <details><summary>セットアップや更新も無料ですか<span aria-hidden="true">＋</span></summary><p>はい。Python不要のWindowsアプリ、セットアップ案内、Tailscaleのチェックと修復、更新の確認と適用を含め、ClipBridgeの機能はすべて無料です。更新はPCセットアップ画面の「アップデート」から適用できます。Tailscaleは別サービスで、利用条件は同社に従います。</p></details>
-    </div></section>
+    <!-- 使い方（画面） -->
+    <section class="section" id="how" aria-labelledby="how-title">
+      <div class="section-head">
+        <h2 id="how-title">画面は、これだけ</h2>
+        <p class="lead">受け取る・送る・切り替える。毎日使う操作を 1 つの画面にまとめました。ホーム画面に追加すれば、アプリのように開けます。</p>
+      </div>
+      <div class="gallery">
+        <figure class="shot">
+          <div class="phone small"><img src="assets/phone-image.png" alt="PC でコピーしたスライドの画像が iPhone の画面にプレビュー表示され、「iPhone にコピー」と「共有」ボタンが並ぶ" width="780" height="1688" loading="lazy"></div>
+          <figcaption><span class="num">1</span><span><strong>PC の画像が届く</strong><br>スクリーンショットをコピーすると、iPhone にプレビュー。コピーや写真への保存ができます。</span></figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="phone small"><img src="assets/phone-send.png" alt="「写真・画像を PC へ」カード。写真を選んで送るボタンと、PC に保存するかクリップボードだけかの選択肢" width="780" height="1688" loading="lazy"></div>
+          <figcaption><span class="num">2</span><span><strong>写真を PC へ送る</strong><br>写真ライブラリやカメラから選んで送信。受け取り方は「保存」か「クリップボードだけ」。</span></figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="phone small"><img src="assets/phone-switch.png" alt="接続先の PC を選ぶメニュー。デスクトップ PC とノート PC が並び、PC を追加するボタンがある" width="780" height="1688" loading="lazy"></div>
+          <figcaption><span class="num">3</span><span><strong>PC を切り替える</strong><br>上部の PC 名をタップ。デスクトップとノート、どちらのクリップボードにもつながります。</span></figcaption>
+        </figure>
+      </div>
+    </section>
 
-    <section class="final-cta" aria-labelledby="final-title"><img src="assets/mark.svg" width="46" height="36" alt=""><span class="eyebrow">KEEP YOUR IDEAS MOVING</span><h2 id="final-title">iPhoneとWindowsを、<br><span class="muted-title">もっと</span>自然につなぐ</h2><p>毎日のコピペに、小さな橋を。</p><a class="pill dark" href="#setup">ClipBridgeを使い始める <span aria-hidden="true">↗</span></a></section>
-    <footer><a class="wordmark" href="#top"><img src="assets/mark.svg" width="30" height="24" alt="">ClipBridge</a><div class="footer-links"><a href="https://github.com/hiromps/clipbridge" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#setup">セットアップ</a><a href="#faq">FAQ</a></div><small>© 2026 ClipBridge</small></footer>
+    <!-- はじめ方 -->
+    <section class="section" id="setup" aria-labelledby="setup-title">
+      <div class="section-head">
+        <h2 id="setup-title">はじめ方は 3 ステップ</h2>
+        <p class="lead">PC 側から順番に進めます。所要時間は 10 分ほど。PC セットアップ画面が状態を確認しながら案内します。</p>
+        <div class="tags" aria-label="必要なもの">
+          <span class="tag">Windows 10 / 11（64 ビット）</span>
+          <span class="tag">iPhone（Safari）</span>
+          <span class="tag">Tailscale（無料プラン可）</span>
+          <span class="tag">インターネット接続</span>
+        </div>
+      </div>
+      <div class="setup">
+        <ol class="steps">
+          <li class="card step">
+            <div class="step-head"><span class="num">1</span><h3>Windows アプリをダウンロードして開く</h3></div>
+            <p>ZIP を展開して <code>ClipBridge.exe</code> を開くだけ。アプリは自動でこの PC に保存され、デスクトップにショートカットができます。ブラウザーに「PC セットアップ画面」が開き、Tailscale の状態を確認して HTTPS 公開まで自動で設定します。</p>
+            <div class="actions">
+              <a class="btn primary" href="https://github.com/hiromps/clipbridge/releases/latest/download/ClipBridge-Windows.zip">ダウンロード（ZIP）</a>
+              <a class="btn" href="https://github.com/hiromps/clipbridge" target="_blank" rel="noopener noreferrer">GitHub で見る ↗</a>
+            </div>
+            <details class="help">
+              <summary>赤い項目が出たときは</summary>
+              <ol>
+                <li><a href="https://tailscale.com/download/windows" target="_blank" rel="noopener noreferrer">Windows 用 Tailscale</a> をインストールしてログインし、接続をオンにします。</li>
+                <li>Tailscale の管理画面（DNS ページ）で MagicDNS と HTTPS 証明書を有効にして、「再確認」を押します。</li>
+                <li>すべて緑になると、QR コードと 6 桁のペアリングコードが表示されます。</li>
+              </ol>
+              <p class="hint">配布版にコード署名はないため、Windows が発行元を確認できない旨を表示することがあります。接続設定はアップデート後も引き継がれます。</p>
+            </details>
+          </li>
+          <li class="card step">
+            <div class="step-head"><span class="num">2</span><h3>iPhone に Tailscale を入れて、QR を読む</h3></div>
+            <p>App Store の Tailscale に PC と同じアカウントでログインし、接続をオンにします。PC 画面の QR コードをカメラで読み取れば接続完了。読み取れないときは、表示された URL を Safari で開いて 6 桁のコードを入力します。</p>
+            <div class="actions">
+              <a class="btn" href="https://apps.apple.com/jp/app/tailscale/id1470499037" target="_blank" rel="noopener noreferrer">App Store で Tailscale を開く ↗</a>
+            </div>
+            <p class="hint">VPN 構成の追加を求められたら許可してください。Tailscale は別サービスで、利用条件は同社に従います。</p>
+          </li>
+          <li class="card step">
+            <div class="step-head"><span class="num">3</span><h3>ホーム画面に追加する</h3></div>
+            <p>Safari の共有ボタン →「ホーム画面に追加」。以後はアイコンを開くだけで、PC の文字や画像が届き、iPhone からも送れます。接続設定は引き継がれます。</p>
+            <p class="hint">2 台目の PC は、iPhone の上部の PC 名 →「PC を追加」から。その PC の画面に表示されている 6 桁コードを入力します。</p>
+          </li>
+        </ol>
+        <figure class="setup-figure">
+          <div class="window">
+            <div class="window-bar"><i></i><i></i><i></i><span>127.0.0.1:8787/pc</span></div>
+            <img src="assets/pc-setup.png" alt="PC セットアップ画面。Tailscale の確認項目がすべて緑で、iPhone で読み取る QR コードと 6 桁のペアリングコードが表示されている" width="2560" height="1760" loading="lazy">
+          </div>
+          <figcaption>PC セットアップ画面。Tailscale の状態を確認し、QR コードとコードで iPhone をつなぎます（表示内容はサンプル）</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- 安心 -->
+    <section class="section" id="safety" aria-labelledby="safety-title">
+      <div class="section-head">
+        <h2 id="safety-title">自分の端末だけで、つながる</h2>
+        <p class="lead">ClipBridge はあなたの PC の上で動く小さなサーバーです。内容を預かるクラウドはありません。</p>
+      </div>
+      <div class="card">
+        <ul class="checks">
+          <li><span class="icon">✅</span><span>通信は自分の Tailscale ネットワーク（tailnet）の中だけ。インターネットに公開する設定（Funnel）になっていれば画面で警告します</span></li>
+          <li><span class="icon">✅</span><span>PC 側は 127.0.0.1 だけで待ち受け、外からは Tailscale Serve の HTTPS 経由でのみ届きます</span></li>
+          <li><span class="icon">✅</span><span>接続は 6 桁のワンタイムコードとトークン。コードは 1 回使うたびに新しくなり、PC 画面からいつでも全端末の接続を解除できます</span></li>
+          <li><span class="icon">✅</span><span>アップデートは公式の GitHub Releases から取得し、サイズと SHA-256 を検証してから入れ替えます</span></li>
+          <li><span class="icon">✅</span><span>ソースコードは <a href="https://github.com/hiromps/clipbridge" target="_blank" rel="noopener noreferrer">GitHub</a> で公開。Python の標準ライブラリだけで動きます</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section" id="faq" aria-labelledby="faq-title">
+      <div class="section-head">
+        <h2 id="faq-title">よくある質問</h2>
+      </div>
+      <div class="faq">
+        <details class="card help"><summary>コピーするだけで、自動的に同期されますか</summary><p>常時自動同期する仕組みではありません。PC でコピーした内容は、開いている iPhone の画面に自動で届きます。iPhone から PC へは画面のボタンで送ります（iOS の制約で、ほかのアプリでのコピーをバックグラウンドで監視することはできません）。</p></details>
+        <details class="card help"><summary>iPhone に何をインストールしますか</summary><p>インストールするアプリは Tailscale だけです。ClipBridge の画面は Safari で開き、ホーム画面に追加するとアプリのように使えます。</p></details>
+        <details class="card help"><summary>写真やファイルも送れますか</summary><p>写真・画像は送れます。iPhone の「写真・画像を選んで送る」から選んだ画像は、PC の「ピクチャ › ClipBridge」に保存してクリップボードにも入れるか、保存せずクリップボードだけに入れる（そのまま Ctrl+V で貼り付け）かを選べます。PC で画像をコピーすると iPhone の画面に表示され、長押しして「“写真”に保存」で写真に残せます。画像以外のファイルには対応していません。</p></details>
+        <details class="card help"><summary>複数の PC で使い分けられますか</summary><p>使えます。iPhone 側はホーム画面のアイコン 1 つのまま、画面上部の PC 名をタップして接続先を切り替えます。「PC を追加」を押すと同じ Tailscale ネットワークで ClipBridge が動いている PC が一覧に出るので、選んでその PC の画面に表示された 6 桁コードを入力するだけです。</p></details>
+        <details class="card help"><summary>同じ Wi-Fi につなぐ必要はありますか</summary><p>両端末が同じ Tailscale ネットワークに接続できていれば、同じ Wi-Fi でなくても使えます。インターネット接続と、PC 側の HTTPS 公開設定（セットアップ画面が自動で行います）が必要です。</p></details>
+        <details class="card help"><summary>PC の電源を切っていても使えますか</summary><p>使う Windows PC の電源を入れ、ClipBridge を起動しておく必要があります。「Windows にサインインしたら自動で起動する」をオンにしておくと便利です。PC がスリープ中や Tailscale が未接続のときは送受信できません。</p></details>
+        <details class="card help"><summary>接続が切れた・コードを求められたら</summary><p>PC セットアップ画面に表示されている 6 桁のコードを入力するか、QR コードをもう一度読み取ります。コードは 1 回使うたびに新しくなります。ホーム画面に追加した版は接続設定を引き継ぐので、通常は再入力は不要です。</p></details>
+        <details class="card help"><summary>セットアップやアップデートも無料ですか</summary><p>はい。Python 不要の Windows アプリ、セットアップ案内、Tailscale のチェックと修復、アップデートの確認と適用を含め、ClipBridge の機能はすべて無料です。アップデートは PC セットアップ画面の「アップデートして再起動」から適用できます。</p></details>
+      </div>
+    </section>
+
+    <!-- 最後の CTA -->
+    <section class="section cta" aria-labelledby="cta-title">
+      <div class="card cta-card">
+        <img src="assets/icon-180.png" alt="" width="56" height="56">
+        <h2 id="cta-title">毎日のコピペに、小さな橋を。</h2>
+        <p class="lead">ダウンロードして exe を開けば、あとは画面の案内どおり。10 分後には iPhone に届いています。</p>
+        <div class="actions center">
+          <a class="btn primary big" href="https://github.com/hiromps/clipbridge/releases/latest/download/ClipBridge-Windows.zip">Windows アプリをダウンロード（無料）</a>
+          <a class="btn big" href="https://github.com/hiromps/clipbridge" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+        </div>
+      </div>
+    </section>
   </main>
-  <script src="app.js" defer></script>
+
+  <footer class="footer">
+    <a class="brand" href="#top"><img src="assets/icon-180.png" alt="" width="24" height="24"><span>ClipBridge</span></a>
+    <nav class="footer-links" aria-label="フッター">
+      <a href="https://github.com/hiromps/clipbridge" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://github.com/hiromps/clipbridge/releases" target="_blank" rel="noopener noreferrer">リリースノート</a>
+      <a href="#setup">はじめ方</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <small>© 2026 ClipBridge ・ Tailscale は Tailscale Inc. の商標です。ClipBridge は同社とは無関係の個人プロジェクトです。</small>
+  </footer>
 </body>
 </html>

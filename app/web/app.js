@@ -1000,7 +1000,11 @@
     if (!pc.name) {
       fetch(pc.origin + '/api/health', { cache: 'no-store', mode: 'cors' })
         .then((response) => response.json())
-        .then((data) => { if (data.pc_name) { upsertPc({ origin: pc.origin, name: data.pc_name }); if (active && active.origin === pc.origin) showMainLabels(); } })
+        .then((data) => {
+          if (!data.pc_name) return;
+          const updated = upsertPc({ origin: pc.origin, name: data.pc_name });
+          if (active && active.origin === pc.origin) { active = updated; showMainLabels(); } // 使用中の PC の表示名も更新する
+        })
         .catch(() => {});
     }
   }
