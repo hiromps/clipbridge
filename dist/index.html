@@ -4,18 +4,123 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#2563eb">
-  <meta name="description" content="ClipBridge は iPhone と Windows の間でクリップボードの文字と画像を受け渡す無料ツール。PC で Ctrl+C した内容が iPhone の画面に届き、iPhone のコピーや写真も PC へ送れます。通信は自分の Tailscale ネットワークの中だけ。Python 不要。">
-  <meta property="og:title" content="ClipBridge — iPhone と Windows のクリップボードを、ひとつに。">
-  <meta property="og:description" content="PC でコピーした文字や画像が iPhone に届く。iPhone の文字も写真も PC へ。自分の端末だけでつながる、無料の小さな橋。">
-  <meta property="og:type" content="website">
-  <meta property="og:image" content="https://clipbridge-ashen.vercel.app/assets/og-v2.png">
-  <meta property="og:url" content="https://clipbridge-ashen.vercel.app/">
-  <meta name="twitter:card" content="summary_large_image">
+  <title>iPhone と Windows のクリップボード共有（無料）| ClipBridge</title>
+  <meta name="description" content="ClipBridge は iPhone と Windows の間で文字と画像を受け渡す無料のクリップボード共有ツール。PC で Ctrl+C した内容が iPhone に届き、iPhone のコピーや写真も PC へ。Tailscale で自分の端末だけをつなぎ、Python 不要。">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+  <meta name="application-name" content="ClipBridge">
+  <meta name="format-detection" content="telephone=no">
   <link rel="canonical" href="https://clipbridge-ashen.vercel.app/">
-  <link rel="icon" type="image/png" href="assets/icon-180.png">
-  <link rel="apple-touch-icon" href="assets/icon-180.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="ClipBridge">
+  <meta property="og:locale" content="ja_JP">
+  <meta property="og:url" content="https://clipbridge-ashen.vercel.app/">
+  <meta property="og:title" content="ClipBridge — iPhone と Windows のクリップボードを、ひとつに。">
+  <meta property="og:description" content="PC でコピーした文字や画像が iPhone に届く。iPhone の文字も写真も、ボタンひとつで PC へ。自分の端末だけでつながる、無料のクリップボード共有ツール。">
+  <meta property="og:image" content="https://clipbridge-ashen.vercel.app/assets/og-1200x630.png">
+  <meta property="og:image:secure_url" content="https://clipbridge-ashen.vercel.app/assets/og-1200x630.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="ClipBridge — iPhone と Windows のクリップボードを、ひとつに。iPhone の画面に PC でコピーした文字が届いている様子">
+  <meta property="og:image" content="https://clipbridge-ashen.vercel.app/assets/og-1200x1200.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="1200">
+  <meta property="og:image:alt" content="ClipBridge — iPhone と Windows のクリップボードを、ひとつに。">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="ClipBridge — iPhone と Windows のクリップボードを、ひとつに。">
+  <meta name="twitter:description" content="PC でコピーした文字や画像が iPhone に届く。iPhone の文字も写真も、ボタンひとつで PC へ。無料・Python 不要・Tailscale で自分の端末だけをつなぐ。">
+  <meta name="twitter:image" content="https://clipbridge-ashen.vercel.app/assets/og-1200x630.png">
+  <meta name="twitter:image:alt" content="ClipBridge の紹介画像。iPhone の画面に PC でコピーした文字が届いている様子">
+  <link rel="icon" href="favicon.ico" sizes="32x32">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="assets/icon-512.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/icon-180.png">
+  <link rel="preload" as="image" href="assets/phone-main.webp" type="image/webp">
   <link rel="stylesheet" href="styles.css">
-  <title>ClipBridge — iPhone と Windows のクリップボードを、ひとつに。</title>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://clipbridge-ashen.vercel.app/#app",
+        "name": "ClipBridge",
+        "alternateName": "クリップブリッジ",
+        "url": "https://clipbridge-ashen.vercel.app/",
+        "description": "iPhone と Windows の間でクリップボードの文字と画像を受け渡す無料ツール。PC でコピーした内容が iPhone の画面に届き、iPhone のコピーや写真も PC へ送れます。通信は自分の Tailscale ネットワークの中だけで行います。",
+        "applicationCategory": "UtilitiesApplication",
+        "applicationSubCategory": "クリップボード共有",
+        "operatingSystem": "Windows 10, Windows 11",
+        "softwareVersion": "2.2.0",
+        "softwareRequirements": "Tailscale（Windows と iPhone の両方）、iPhone の Safari",
+        "inLanguage": "ja",
+        "isAccessibleForFree": true,
+        "offers": {"@type": "Offer", "price": "0", "priceCurrency": "JPY", "availability": "https://schema.org/InStock"},
+        "downloadUrl": "https://github.com/hiromps/clipbridge/releases/latest/download/ClipBridge-Windows.zip",
+        "installUrl": "https://clipbridge-ashen.vercel.app/#setup",
+        "releaseNotes": "https://github.com/hiromps/clipbridge/releases",
+        "image": "https://clipbridge-ashen.vercel.app/assets/og-1200x630.png",
+        "screenshot": [
+          "https://clipbridge-ashen.vercel.app/assets/phone-main.png",
+          "https://clipbridge-ashen.vercel.app/assets/phone-image.png",
+          "https://clipbridge-ashen.vercel.app/assets/pc-setup.png"
+        ],
+        "featureList": [
+          "PC でコピーした文字を iPhone の画面に表示し、ワンタップで iPhone にコピー",
+          "iPhone でコピーした文字を PC のクリップボードへ送信",
+          "写真・画像の送受信（PC に保存、またはクリップボードのみ）",
+          "複数の Windows PC を iPhone のアイコン 1 つで切り替え",
+          "Tailscale による自分の端末だけの通信、クラウド非経由"
+        ],
+        "author": {"@id": "https://clipbridge-ashen.vercel.app/#author"},
+        "publisher": {"@id": "https://clipbridge-ashen.vercel.app/#author"},
+        "sameAs": ["https://github.com/hiromps/clipbridge"]
+      },
+      {
+        "@type": "Person",
+        "@id": "https://clipbridge-ashen.vercel.app/#author",
+        "name": "hiromps",
+        "url": "https://github.com/hiromps"
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://clipbridge-ashen.vercel.app/#website",
+        "url": "https://clipbridge-ashen.vercel.app/",
+        "name": "ClipBridge",
+        "inLanguage": "ja",
+        "publisher": {"@id": "https://clipbridge-ashen.vercel.app/#author"}
+      },
+      {
+        "@type": "WebPage",
+        "@id": "https://clipbridge-ashen.vercel.app/#webpage",
+        "url": "https://clipbridge-ashen.vercel.app/",
+        "name": "iPhone と Windows のクリップボード共有（無料）| ClipBridge",
+        "description": "ClipBridge は iPhone と Windows の間で文字と画像を受け渡す無料のクリップボード共有ツール。PC で Ctrl+C した内容が iPhone に届き、iPhone のコピーや写真も PC へ。Tailscale で自分の端末だけをつなぎ、Python 不要。",
+        "isPartOf": {"@id": "https://clipbridge-ashen.vercel.app/#website"},
+        "about": {"@id": "https://clipbridge-ashen.vercel.app/#app"},
+        "primaryImageOfPage": "https://clipbridge-ashen.vercel.app/assets/og-1200x630.png",
+        "inLanguage": "ja",
+        "datePublished": "2026-11-09",
+        "dateModified": "2026-11-10"
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://clipbridge-ashen.vercel.app/#faq",
+        "mainEntity": [
+          {"@type": "Question", "name": "コピーするだけで、自動的に同期されますか", "acceptedAnswer": {"@type": "Answer", "text": "常時自動同期する仕組みではありません。PC でコピーした内容は、開いている iPhone の画面に自動で届きます。iPhone から PC へは画面のボタンで送ります。iOS の制約で、ほかのアプリでのコピーをバックグラウンドで監視することはできません。"}},
+          {"@type": "Question", "name": "iPhone に何をインストールしますか", "acceptedAnswer": {"@type": "Answer", "text": "インストールするアプリは Tailscale だけです。ClipBridge の画面は Safari で開き、ホーム画面に追加するとアプリのように使えます。"}},
+          {"@type": "Question", "name": "写真やファイルも送れますか", "acceptedAnswer": {"@type": "Answer", "text": "写真・画像は送れます。iPhone から選んだ画像は PC の「ピクチャ › ClipBridge」に保存してクリップボードにも入れるか、保存せずクリップボードだけに入れるかを選べます。PC で画像をコピーすると iPhone の画面に表示され、長押しして写真に保存できます。画像以外のファイルには対応していません。"}},
+          {"@type": "Question", "name": "複数の PC で使い分けられますか", "acceptedAnswer": {"@type": "Answer", "text": "使えます。iPhone 側はホーム画面のアイコン 1 つのまま、画面上部の PC 名をタップして接続先を切り替えます。「PC を追加」を押すと同じ Tailscale ネットワークで ClipBridge が動いている PC が一覧に出ます。"}},
+          {"@type": "Question", "name": "同じ Wi-Fi につなぐ必要はありますか", "acceptedAnswer": {"@type": "Answer", "text": "両端末が同じ Tailscale ネットワークに接続できていれば、同じ Wi-Fi でなくても使えます。インターネット接続と、PC 側の HTTPS 公開設定（セットアップ画面が自動で行います）が必要です。"}},
+          {"@type": "Question", "name": "PC の電源を切っていても使えますか", "acceptedAnswer": {"@type": "Answer", "text": "使う Windows PC の電源を入れ、ClipBridge を起動しておく必要があります。Windows にサインインしたら自動で起動する設定にしておくと便利です。"}},
+          {"@type": "Question", "name": "接続が切れた・コードを求められたら", "acceptedAnswer": {"@type": "Answer", "text": "PC セットアップ画面に表示されている 6 桁のコードを入力するか、QR コードをもう一度読み取ります。コードは 1 回使うたびに新しくなります。ホーム画面に追加した版は接続設定を引き継ぐので、通常は再入力は不要です。"}},
+          {"@type": "Question", "name": "セットアップやアップデートも無料ですか", "acceptedAnswer": {"@type": "Answer", "text": "はい。Python 不要の Windows アプリ、セットアップ案内、Tailscale のチェックと修復、アップデートの確認と適用を含め、ClipBridge の機能はすべて無料です。"}}
+        ]
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
   <a class="skip" href="#main">本文へ移動</a>
@@ -52,7 +157,7 @@
         </ul>
       </div>
       <figure class="hero-figure">
-        <div class="phone"><img src="assets/phone-main.png" alt="ClipBridge の iPhone 画面。PC でコピーした文字が「新着」として表示され、「iPhone にコピー」ボタンと、iPhone から PC へ送る操作が並んでいる" width="780" height="1688" fetchpriority="high"></div>
+        <div class="phone"><picture><source srcset="assets/phone-main.webp" type="image/webp"><img src="assets/phone-main.png" alt="ClipBridge の iPhone 画面。PC でコピーした文字が「新着」として表示され、「iPhone にコピー」ボタンと、iPhone から PC へ送る操作が並んでいる" width="780" height="1688" fetchpriority="high"></picture></div>
         <figcaption>実際の iPhone 画面（表示内容はサンプル）</figcaption>
       </figure>
     </section>
@@ -95,15 +200,15 @@
       </div>
       <div class="gallery">
         <figure class="shot">
-          <div class="phone small"><img src="assets/phone-image.png" alt="PC でコピーしたスライドの画像が iPhone の画面にプレビュー表示され、「iPhone にコピー」と「共有」ボタンが並ぶ" width="780" height="1688" loading="lazy"></div>
+          <div class="phone small"><picture><source srcset="assets/phone-image.webp" type="image/webp"><img src="assets/phone-image.png" alt="PC でコピーしたスライドの画像が iPhone の画面にプレビュー表示され、「iPhone にコピー」と「共有」ボタンが並ぶ" width="780" height="1688" loading="lazy"></picture></div>
           <figcaption><span class="num">1</span><span><strong>PC の画像が届く</strong><br>スクリーンショットをコピーすると、iPhone にプレビュー。コピーや写真への保存ができます。</span></figcaption>
         </figure>
         <figure class="shot">
-          <div class="phone small"><img src="assets/phone-send.png" alt="「写真・画像を PC へ」カード。写真を選んで送るボタンと、PC に保存するかクリップボードだけかの選択肢" width="780" height="1688" loading="lazy"></div>
+          <div class="phone small"><picture><source srcset="assets/phone-send.webp" type="image/webp"><img src="assets/phone-send.png" alt="「写真・画像を PC へ」カード。写真を選んで送るボタンと、PC に保存するかクリップボードだけかの選択肢" width="780" height="1688" loading="lazy"></picture></div>
           <figcaption><span class="num">2</span><span><strong>写真を PC へ送る</strong><br>写真ライブラリやカメラから選んで送信。受け取り方は「保存」か「クリップボードだけ」。</span></figcaption>
         </figure>
         <figure class="shot">
-          <div class="phone small"><img src="assets/phone-switch.png" alt="接続先の PC を選ぶメニュー。デスクトップ PC とノート PC が並び、PC を追加するボタンがある" width="780" height="1688" loading="lazy"></div>
+          <div class="phone small"><picture><source srcset="assets/phone-switch.webp" type="image/webp"><img src="assets/phone-switch.png" alt="接続先の PC を選ぶメニュー。デスクトップ PC とノート PC が並び、PC を追加するボタンがある" width="780" height="1688" loading="lazy"></picture></div>
           <figcaption><span class="num">3</span><span><strong>PC を切り替える</strong><br>上部の PC 名をタップ。デスクトップとノート、どちらのクリップボードにもつながります。</span></figcaption>
         </figure>
       </div>
@@ -157,7 +262,7 @@
         <figure class="setup-figure">
           <div class="window">
             <div class="window-bar"><i></i><i></i><i></i><span>127.0.0.1:8787/pc</span></div>
-            <img src="assets/pc-setup.png" alt="PC セットアップ画面。Tailscale の確認項目がすべて緑で、iPhone で読み取る QR コードと 6 桁のペアリングコードが表示されている" width="2560" height="1760" loading="lazy">
+            <picture><source srcset="assets/pc-setup.webp" type="image/webp"><img src="assets/pc-setup.png" alt="PC セットアップ画面。Tailscale の確認項目がすべて緑で、iPhone で読み取る QR コードと 6 桁のペアリングコードが表示されている" width="2560" height="1760" loading="lazy"></picture>
           </div>
           <figcaption>PC セットアップ画面。Tailscale の状態を確認し、QR コードとコードで iPhone をつなぎます（表示内容はサンプル）</figcaption>
         </figure>

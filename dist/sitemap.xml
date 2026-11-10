@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>https://clipbridge-ashen.vercel.app/</loc>
+    <lastmod>2026-11-10</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://clipbridge-ashen.vercel.app/assets/phone-main.png</image:loc>
+      <image:title>ClipBridge の iPhone 画面（PC でコピーした文字が届いたところ）</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://clipbridge-ashen.vercel.app/assets/pc-setup.png</image:loc>
+      <image:title>ClipBridge の PC セットアップ画面（Tailscale の確認と QR コード）</image:title>
+    </image:image>
+  </url>
+</urlset>
