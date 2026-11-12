@@ -251,6 +251,19 @@ def test_static_files_and_apple_touch_icon_aliases(app):
         assert status == 200 and headers["Content-Type"] == "image/png", path
 
 
+def test_guide_illustrations_are_served_only_from_img_folder(app):
+    # 説明用の図解（web/img/*.webp）。ページ側は <img src="/img/名前.webp"> で参照する
+    for name in ("flow-overview", "add-to-home", "image-transfer", "shortcut-setup", "done", "pro-pcs", "pro-history", "pro-images", "pro-hotkeys", "pro-support"):
+        status, headers, body = request(app.base, f"/img/{name}.webp")
+        assert status == 200 and headers["Content-Type"] == "image/webp" and body[:4] == b"RIFF", name
+    # 名前は英小文字・数字・ハイフンだけ。無いファイルや別の拡張子・大文字・階層は 404
+    for path in ("/img/missing.webp", "/img/Done.webp", "/img/done.webp/", "/img/../server.py", "/img/sub/done.webp", "/img/done.js"):
+        assert request(app.base, path)[0] == 404, path
+    # ウィザードと PC 画面が同じ画像を参照している
+    assert b'src="/img/flow-overview.webp"' in request(app.base, "/?view=1")[2]
+    assert b'src="/img/add-to-home.webp"' in request(app.base, "/pc")[2]
+
+
 def test_clipboard_write_failure_returns_json_without_details(app, monkeypatch):
     def fail(_text):
         raise RuntimeError("secret clipboard content")

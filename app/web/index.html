@@ -144,35 +144,40 @@
       <ol id="onboardDots" class="steps-dots" aria-label="進み具合"></ol>
 
       <section class="card onboard-step" data-step="welcome" hidden>
-        <h2>これで、文字と画像が行き来します</h2>
-        <ul class="checks">
-          <li><span class="icon">✅</span><span>PC で Ctrl+C すると、この画面に「新着」として届きます。「iPhone にコピー」で取り込めます</span></li>
-          <li><span class="icon">✅</span><span>iPhone でコピーした文字は「PC へ送る」で PC のクリップボードに入ります</span></li>
-          <li><span class="icon">✅</span><span>写真・画像もどちらの向きにも送れます</span></li>
+        <div class="illus-frame"><img class="illus" src="/img/flow-overview.webp" width="1200" height="800" alt="PC と iPhone の間で文字と画像が両方向に行き来する図" decoding="async"></div>
+        <ul class="illus-caps">
+          <li><b>PC → iPhone</b>PC でコピーすると届く</li>
+          <li><b>iPhone → PC</b>「PC へ送る」で送信</li>
+          <li><b>写真・画像</b>どちらの向きにも</li>
         </ul>
-        <p class="hint">この画面を開いている間だけ同期します（iOS の仕様です）。次の 2 つを設定すると、もっと手軽になります。</p>
+        <p class="hint">同期はこの画面を開いている間だけ（iOS の仕様）。次の 2 つを設定すると、もっと手軽になります。</p>
       </section>
 
       <section class="card onboard-step" data-step="home" hidden>
-        <h2>ホーム画面に追加（おすすめ）</h2>
-        <ol>
-          <li>Safari 下部の共有ボタン <span class="kbd">↑</span> をタップ</li>
-          <li>「ホーム画面に追加」を選ぶ</li>
-          <li>右上の「追加」をタップ</li>
+        <div class="illus-frame"><img class="illus" src="/img/add-to-home.webp" width="1200" height="800" alt="Safari の共有ボタン → ホーム画面に追加 → ホーム画面にアイコンが並ぶ" decoding="async"></div>
+        <ol class="illus-caps num">
+          <li><b>1</b>下の共有ボタン</li>
+          <li><b>2</b>ホーム画面に追加</li>
+          <li><b>3</b>「追加」を押すと完成</li>
         </ol>
-        <p class="hint">追加したアプリは接続設定を引き継ぐので、コードの再入力は不要です。アイコンから開くだけで PC のクリップボードが見られます。</p>
+        <p class="hint">追加したアイコンから開くだけで PC のクリップボードが見られます。コードの再入力は不要です。</p>
       </section>
 
       <section class="card onboard-step" data-step="shortcut" hidden>
-        <h2>ショートカットで、どこからでも PC へ</h2>
-        <p class="lead">iPhone でコピーしたあと、この画面を開かずに PC へ送れます。背面タップや共有シートにも割り当てられます。</p>
+        <div class="illus-frame"><img class="illus" src="/img/shortcut-setup.webp" width="1200" height="800" alt="ショートカットを追加 → URL と X-Token を置き換え → 背面タップで PC へ届く" decoding="async"></div>
+        <ol class="illus-caps num">
+          <li><b>1</b>追加する</li>
+          <li><b>2</b>2 か所を置き換え</li>
+          <li><b>3</b>コピーして実行</li>
+        </ol>
+        <p class="lead">iPhone でコピーしたあと、この画面を開かずに PC へ送れます。</p>
         <ol class="onboard-list">
           <li>
             <a id="shortcutAddBtn" class="btn primary block" href="#" target="_blank" rel="noopener noreferrer">ショートカットを追加する ↗</a>
-            <p class="hint">iCloud のページが開きます。「ショートカットを追加」を押してください。</p>
+            <p class="hint">開いたページで「ショートカットを追加」を押します。</p>
           </li>
           <li>
-            <p class="label">追加したショートカットを開き、次の 2 か所を置き換えます</p>
+            <p class="label">追加したショートカットを開き、2 か所を置き換え</p>
             <div class="kv-copy">
               <span class="label">URL</span>
               <code id="shortcutUrlText"></code>
@@ -187,8 +192,7 @@
             <p class="hint">トークンはこの PC との接続の鍵です。ショートカット以外には貼らないでください。</p>
           </li>
           <li>
-            <p class="label">動作を確認</p>
-            <p class="hint">iPhone で何か文字をコピーしてから、ショートカットを実行してみてください。届くとここに表示されます。</p>
+            <p class="label">文字をコピーして、ショートカットを実行</p>
             <p id="shortcutTestMsg" class="msg">まだ届いていません</p>
           </li>
         </ol>
@@ -202,8 +206,8 @@
       </section>
 
       <section class="card onboard-step" data-step="done" hidden>
-        <h2>準備ができました</h2>
-        <p class="lead">PC で Ctrl+C した文字や画像がここに届き、iPhone からも送れます。設定はあとから「接続」カードの「セットアップガイド」で見直せます。</p>
+        <div class="illus-frame square"><img class="illus" src="/img/done.webp" width="1024" height="680" alt="iPhone と PC がつながった" decoding="async"></div>
+        <p class="lead">PC で Ctrl+C した文字や画像がここに届き、iPhone からも送れます。</p>
       </section>
 
       <div class="onboard-nav">

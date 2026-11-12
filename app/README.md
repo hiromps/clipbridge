@@ -162,6 +162,7 @@ app/
 │   ├── index.html, app.js    iPhone 用画面
 │   ├── pc.html, pc.js        PC 用セットアップ画面
 │   ├── style.css, icon-*.png
+│   ├── img/*.webp            説明用の図解（Codex CLI の画像生成で作成、WebP 幅 1200px）
 │   └── vendor/qrcode.js      QR 生成（qrcode-generator, MIT）
 ├── tests/test_server.py  結合テスト（pytest）
 └── tools/make_icons.py   アイコン生成（開発用、Pillow）
