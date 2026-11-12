@@ -85,6 +85,7 @@ SHORTCUT_URL = "https://www.icloud.com/shortcuts/36c11823bdb7479b9fb2c47e0c917be
 UPDATE_CHECK_DELAY = 10.0
 # サブスクリプションのライセンス更新（期限つきのキーだけが使う。無期限のキーは通信しない）
 LICENSE_REFRESH_URL = SITE_URL + "api/license/refresh"
+LICENSE_PORTAL_URL = SITE_URL + "api/license/portal"  # 解約・カード変更ページ（Stripe）の URL をもらう
 LICENSE_REFRESH_DELAY = 15.0
 LICENSE_REFRESH_TICK = 6 * 3600.0       # 更新が必要かを確かめる間隔
 LICENSE_REFRESH_INTERVAL = 24 * 3600.0  # 有効なキーを発行サーバーへ問い合わせる最短間隔
@@ -710,6 +711,35 @@ def parse_license(key: str | None, public: dict | None = None, now: float | None
     return result
 
 
+def _license_post(url: str, payload: dict, opener) -> dict:
+    """発行サーバーへ JSON を POST して JSON を受け取る。一時的な失敗は RuntimeError、断られたら LicenseRefused。"""
+    request = urllib.request.Request(
+        url, data=json.dumps(payload).encode("utf-8"), method="POST",
+        headers={"User-Agent": f"{APP_NAME}/{__version__}", "Content-Type": "application/json"},
+    )
+    try:
+        with opener(request, timeout=15) as response:
+            raw = response.read(16385)
+    except urllib.error.HTTPError as exc:
+        if exc.code in (402, 403, 410):
+            try:
+                data = json.loads(exc.read(4096).decode("utf-8"))
+            except (OSError, ValueError, UnicodeDecodeError):
+                data = None
+            if isinstance(data, dict) and isinstance(data.get("error"), str):
+                raise LicenseRefused(data["error"], str(data.get("message") or "契約が有効ではありません")) from exc
+        raise RuntimeError(f"発行サーバーに確認できません（HTTP {exc.code}）") from exc
+    except OSError as exc:
+        raise RuntimeError(f"発行サーバーに確認できません（{type(exc).__name__}）") from exc
+    try:
+        data = json.loads(raw.decode("utf-8")) if len(raw) <= 16384 else None
+    except (ValueError, UnicodeDecodeError):
+        data = None
+    if not isinstance(data, dict):
+        raise RuntimeError("発行サーバーに確認できません（応答を読めません）")
+    return data
+
+
 class LicenseRefused(Exception):
     """発行サーバーが更新を断った（解約・返金など）。code が "revoked" のときはキーを即時に無効にする。"""
 
@@ -726,32 +756,22 @@ def fetch_license_refresh(
     送るのはキー・この PC のランダムな ID・PC 名・版だけ（クリップボードの内容は送らない）。
     一時的な失敗は RuntimeError、契約終了は LicenseRefused。
     """
-    body = json.dumps({"key": key, "install_id": install_id, "pc_name": pc_name, "version": __version__}).encode("utf-8")
-    request = urllib.request.Request(
-        url or LICENSE_REFRESH_URL, data=body, method="POST",
-        headers={"User-Agent": f"{APP_NAME}/{__version__}", "Content-Type": "application/json"},
+    data = _license_post(
+        url or LICENSE_REFRESH_URL,
+        {"key": key, "install_id": install_id, "pc_name": pc_name, "version": __version__}, opener,
     )
-    try:
-        with opener(request, timeout=15) as response:
-            raw = response.read(16385)
-    except urllib.error.HTTPError as exc:
-        if exc.code in (402, 403, 410):
-            try:
-                data = json.loads(exc.read(4096).decode("utf-8"))
-            except (OSError, ValueError, UnicodeDecodeError):
-                data = None
-            if isinstance(data, dict) and isinstance(data.get("error"), str):
-                raise LicenseRefused(data["error"], str(data.get("message") or "契約が有効ではありません")) from exc
-        raise RuntimeError(f"ライセンスの更新を確認できません（HTTP {exc.code}）") from exc
-    except OSError as exc:
-        raise RuntimeError(f"ライセンスの更新を確認できません（{type(exc).__name__}）") from exc
-    try:
-        data = json.loads(raw.decode("utf-8")) if len(raw) <= 16384 else None
-    except (ValueError, UnicodeDecodeError):
-        data = None
-    if not isinstance(data, dict) or not isinstance(data.get("key"), str):
-        raise RuntimeError("ライセンスの更新を確認できません（応答を読めません）")
+    if not isinstance(data.get("key"), str):
+        raise RuntimeError("発行サーバーに確認できません（応答を読めません）")
     return data["key"]
+
+
+def fetch_license_portal(key: str, url: str | None = None, opener=urllib.request.urlopen) -> str:
+    """契約の管理ページ（解約・カード変更）の URL を受け取る。https 以外は受け付けない。"""
+    data = _license_post(url or LICENSE_PORTAL_URL, {"key": key}, opener)
+    target = data.get("url")
+    if not isinstance(target, str) or urlsplit(target).scheme != "https" or not urlsplit(target).netloc:
+        raise RuntimeError("発行サーバーに確認できません（応答を読めません）")
+    return target
 
 
 # ---------------------------------------------------------------------------
@@ -1984,6 +2004,7 @@ class ClipBridgeApp:
         image_dir: Path | None = None,
         history_path: Path | None = None,
         license_refresher=None,
+        license_portal=None,
     ) -> None:
         self.port = port
         self.config_path = config_path
@@ -1996,6 +2017,7 @@ class ClipBridgeApp:
         # Pro
         self.license = parse_license(self._stored_license())
         self.license_refresher = license_refresher or fetch_license_refresh
+        self.license_portal = license_portal or fetch_license_portal
         self._license_lock = threading.RLock()
         self._license_checked = 0.0           # 最後に発行サーバーへ問い合わせた時刻（成否を問わない）
         self._license_renewed: float | None = None
@@ -2185,6 +2207,19 @@ class ClipBridgeApp:
             self._license_renewed = time.time()
             self.log(f"license renewed: {new_info['id']} until {new_info['expires']}")
             return self.license_status()
+
+    def license_portal_url(self) -> str:
+        """サブスクリプションの管理ページの URL。期限つきのキーを持っているときだけ使える。"""
+        key = self._stored_license()
+        info = parse_license(key)
+        if not key or info["deadline"] is None or not (info["valid"] or info["expired"]):
+            raise ValueError("サブスクリプションのライセンスが入っていません")
+        try:
+            return self.license_portal(key)
+        except LicenseRefused as exc:
+            raise ValueError(str(exc)) from exc
+        except RuntimeError as exc:
+            raise ValueError(str(exc)) from exc
 
     def license_tick(self) -> None:
         self.refresh_license()
@@ -3265,6 +3300,11 @@ def make_handler(app: ClipBridgeApp):
                 return self._json(200, {"ok": True, "license": app.license_status()})
             if action == "license/refresh":
                 return self._json(200, {"ok": True, "license": app.refresh_license(force=True)})
+            if action == "license/portal":
+                try:
+                    return self._json(200, {"ok": True, "url": app.license_portal_url()})
+                except ValueError as exc:
+                    return self._error(400, "portal_unavailable", str(exc))
             if action.startswith("history/"):
                 if not self._require_pro():
                     return

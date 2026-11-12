@@ -1393,6 +1393,34 @@ def test_fetch_license_refresh_sends_only_license_fields_and_maps_errors():
         server.fetch_license_refresh("k", "i", "p", opener=offline)
 
 
+def test_subscription_portal_link_from_dashboard(app, monkeypatch):
+    monkeypatch.setattr(server, "LICENSE_PUBLIC_KEY", TEST_PUBLIC)
+    seen = []
+    app.license_portal = lambda key: seen.append(key) or "https://billing.stripe.com/p/session/test"
+    assert admin(app, "license/portal")[0] == 400  # キーなし
+    app.apply_license(issue_key())
+    assert admin(app, "license/portal")[0] == 400 and seen == []  # 無期限のキーは対象外（通信しない）
+    key = issue_key(expires="2999-01-31")
+    app.apply_license(key)
+    status, _, body = admin(app, "license/portal")
+    assert status == 200 and as_json(body)["url"] == "https://billing.stripe.com/p/session/test" and seen == [key]
+
+    def refused(key):
+        raise server.LicenseRefused("unknown", "このライセンスは自動更新の対象ではありません")
+
+    app.license_portal = refused
+    status, _, body = admin(app, "license/portal")
+    assert status == 400 and "対象ではありません" in as_json(body)["message"]
+
+    def reply(payload):
+        return lambda request, timeout=0: FakeHTTPResponse(json.dumps(payload).encode())
+
+    assert server.fetch_license_portal("k", opener=reply({"url": "https://billing.stripe.com/x"})) == "https://billing.stripe.com/x"
+    for bad in ({"url": "http://billing.stripe.com/x"}, {"url": "javascript:alert(1)"}, {"url": 1}, {}):
+        with pytest.raises(RuntimeError):
+            server.fetch_license_portal("k", opener=reply(bad))
+
+
 def test_phone_carries_the_license_between_pcs(app, monkeypatch):
     monkeypatch.setattr(server, "LICENSE_PUBLIC_KEY", TEST_PUBLIC)
     base, token = app.base, app.token

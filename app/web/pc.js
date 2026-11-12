@@ -64,6 +64,7 @@
     proRenewal: $('proRenewal'),
     proRenewalText: $('proRenewalText'),
     licenseRefreshBtn: $('licenseRefreshBtn'),
+    licensePortalBtn: $('licensePortalBtn'),
     proMsg: $('proMsg'),
     clipBadge: $('clipBadge'),
     clipMeta: $('clipMeta'),
@@ -298,6 +299,22 @@
       els.proMsg.className = 'msg error';
     } finally {
       els.licenseApplyBtn.disabled = false;
+    }
+  });
+
+  els.licensePortalBtn.addEventListener('click', async () => {
+    // ポップアップがブロックされないよう、押した直後に空のタブを開いてから URL を入れる
+    const tab = window.open('', '_blank');
+    els.licensePortalBtn.disabled = true;
+    try {
+      const result = await adminPost('license/portal');
+      if (tab) { tab.opener = null; tab.location.replace(result.url); } else window.location.assign(result.url);
+    } catch (error) {
+      if (tab) tab.close();
+      els.proMsg.textContent = error.message;
+      els.proMsg.className = 'msg error';
+    } finally {
+      els.licensePortalBtn.disabled = false;
     }
   });
 
