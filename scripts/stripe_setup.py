@@ -3,7 +3,8 @@
 
     # PowerShell
     $env:STRIPE_SECRET_KEY = "sk_test_..."   # まずテスト（サンドボックス）のキーで試す
-    python scripts/stripe_setup.py
+    python scripts/stripe_setup.py            # 署名シークレットを画面に表示する
+    python scripts/stripe_setup.py --vercel   # 表示せず、Vercel の STRIPE_WEBHOOK_SECRET（Production）に直接登録する
 
 作るもの:
     商品    ClipBridge Pro（ID: clipbridge_pro）
@@ -18,6 +19,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -83,10 +86,27 @@ def ensure_webhook(stripe: StripeClient, url: str) -> tuple[str, str | None]:
     return "作成しました", created.get("secret")
 
 
+def save_to_vercel(secret: str) -> bool:
+    """署名シークレットを画面に出さずに、Vercel の環境変数（Production）へ登録する。リンク済みのフォルダーで実行すること。"""
+    vercel = shutil.which("vercel")
+    if not vercel:
+        print("vercel コマンドが見つかりません。", file=sys.stderr)
+        return False
+    result = subprocess.run(
+        [vercel, "env", "add", "STRIPE_WEBHOOK_SECRET", "production", "--sensitive", "--force"],
+        input=secret, text=True, capture_output=True, cwd=Path(__file__).resolve().parents[1],
+    )
+    if result.returncode != 0:
+        lines = (result.stderr or result.stdout or "").strip().splitlines()
+        print("Vercel への登録に失敗しました: " + (lines[-1] if lines else "理由不明"), file=sys.stderr)
+    return result.returncode == 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="ClipBridge Pro の Stripe 設定")
     parser.add_argument("--site-url", default=os.environ.get("SITE_URL") or DEFAULT_SITE_URL, help="公開サイトの URL")
     parser.add_argument("--yes", action="store_true", help="確認を省く")
+    parser.add_argument("--vercel", action="store_true", help="署名シークレットを表示せず、Vercel の STRIPE_WEBHOOK_SECRET に登録する")
     args = parser.parse_args(argv)
     secret_key = os.environ.get("STRIPE_SECRET_KEY", "").strip()
     if not secret_key.startswith(("sk_test_", "sk_live_", "rk_test_", "rk_live_")):
@@ -115,7 +135,12 @@ def main(argv: list[str] | None = None) -> int:
     except StripeError as exc:
         print(f"Stripe でエラーになりました: {exc}", file=sys.stderr)
         return 1
-    if secret:
+    if secret and args.vercel and save_to_vercel(secret):
+        print("署名シークレットを Vercel の STRIPE_WEBHOOK_SECRET（Production）に登録しました。再デプロイで反映されます。")
+    elif not secret and args.vercel:
+        print("webhook は既にあるため、署名シークレットを取得できません（Stripe は作成時にしか返しません）。"
+              "Stripe ダッシュボードの「開発者 › Webhook」でこの送信先を削除してから、もう一度実行してください。")
+    elif secret:
         print("\n署名シークレット（この 1 回だけ表示します）。Vercel の環境変数 STRIPE_WEBHOOK_SECRET に設定してください:")
         print(secret)
     print("\n残りの手作業: Stripe ダッシュボードの「設定 › Billing › カスタマーポータル」を開いて保存する（解約とカード変更を有効に）。")
