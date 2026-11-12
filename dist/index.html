@@ -115,7 +115,8 @@
           {"@type": "Question", "name": "同じ Wi-Fi につなぐ必要はありますか", "acceptedAnswer": {"@type": "Answer", "text": "両端末が同じ Tailscale ネットワークに接続できていれば、同じ Wi-Fi でなくても使えます。インターネット接続と、PC 側の HTTPS 公開設定（セットアップ画面が自動で行います）が必要です。"}},
           {"@type": "Question", "name": "PC の電源を切っていても使えますか", "acceptedAnswer": {"@type": "Answer", "text": "使う Windows PC の電源を入れ、ClipBridge を起動しておく必要があります。Windows にサインインしたら自動で起動する設定にしておくと便利です。"}},
           {"@type": "Question", "name": "接続が切れた・コードを求められたら", "acceptedAnswer": {"@type": "Answer", "text": "PC セットアップ画面に表示されている 6 桁のコードを入力するか、QR コードをもう一度読み取ります。コードは 1 回使うたびに新しくなります。ホーム画面に追加した版は接続設定を引き継ぐので、通常は再入力は不要です。"}},
-          {"@type": "Question", "name": "セットアップやアップデートも無料ですか", "acceptedAnswer": {"@type": "Answer", "text": "はい。Python 不要の Windows アプリ、セットアップ案内、Tailscale のチェックと修復、アップデートの確認と適用を含め、ClipBridge の機能はすべて無料です。"}}
+          {"@type": "Question", "name": "セットアップやアップデートも無料ですか", "acceptedAnswer": {"@type": "Answer", "text": "はい。Python 不要の Windows アプリ、セットアップ案内、Tailscale のチェックと修復、アップデートの確認と適用、文字と画像の受け渡し、PC 2 台までの切り替えは無料です。3 台目以降の PC や履歴などは ClipBridge Pro（月額 480 円 / 年額 4,800 円、14 日間無料）で使えます。"}},
+          {"@type": "Question", "name": "ClipBridge Pro は何が違いますか", "acceptedAnswer": {"@type": "Answer", "text": "無料版の機能に加えて、3 台目以降の PC の登録、クリップボードの履歴（直近 100 件の検索・再送・ピン留め）、画像の保存ルール、PC 側のホットキー、優先サポートが使えます。1 人分の契約で PC は何台でも使え、ライセンスキーの入力は 1 台だけで済みます。月額 480 円または年額 4,800 円（税込）で、最初の 14 日間は無料です。解約は PC のセットアップ画面の「契約を管理」からいつでもできます。"}}
         ]
       }
     ]
@@ -131,6 +132,7 @@
       <a href="#features">できること</a>
       <a href="#how">使い方</a>
       <a href="#setup">はじめ方</a>
+      <a href="#pricing">料金</a>
       <a href="#faq">FAQ</a>
     </nav>
     <div class="topbar-actions">
@@ -151,7 +153,7 @@
           <a class="btn big" href="#setup">はじめ方を見る</a>
         </div>
         <ul class="checks hero-checks">
-          <li><span class="icon">✅</span><span>すべて無料。Python やコマンドの操作は不要</span></li>
+          <li><span class="icon">✅</span><span>基本の機能はずっと無料。Python やコマンドの操作は不要</span></li>
           <li><span class="icon">✅</span><span>通信は自分の Tailscale ネットワークの中だけ。クラウドに内容を置きません</span></li>
           <li><span class="icon">✅</span><span>複数の PC も、iPhone のアイコン 1 つで切り替え</span></li>
         </ul>
@@ -286,6 +288,43 @@
       </div>
     </section>
 
+    <!-- 料金 -->
+    <section class="section" id="pricing" aria-labelledby="pricing-title">
+      <div class="section-head">
+        <h2 id="pricing-title">料金</h2>
+        <p class="lead">文字と画像の受け渡しは、ずっと無料。PC が 3 台以上ある人や、履歴を使いたい人には Pro があります。</p>
+      </div>
+      <div class="grid pricing">
+        <div class="card plan">
+          <h3>無料</h3>
+          <p class="price"><strong>0 円</strong></p>
+          <ul class="checks">
+            <li><span class="icon">✅</span><span>文字と画像の双方向の受け渡し</span></li>
+            <li><span class="icon">✅</span><span>PC 2 台までの切り替え</span></li>
+            <li><span class="icon">✅</span><span>ショートカットから PC へ送信</span></li>
+            <li><span class="icon">✅</span><span>アップデート</span></li>
+          </ul>
+          <div class="actions"><a class="btn" href="https://github.com/hiromps/clipbridge/releases/latest/download/ClipBridge-Windows.zip">ダウンロード</a></div>
+        </div>
+        <div class="card plan pro">
+          <h3>ClipBridge Pro <span class="tag">14 日間無料</span></h3>
+          <p class="price"><strong>月額 480 円</strong> ／ <strong>年額 4,800 円</strong><span class="note">（税込。年額は 2 か月分お得）</span></p>
+          <ul class="checks">
+            <li><span class="icon">✅</span><span>無料版のすべて</span></li>
+            <li><span class="icon">✅</span><span>PC 何台でも（キーの入力は 1 台だけ）</span></li>
+            <li><span class="icon">✅</span><span>履歴 100 件（検索・再送・ピン留め）</span></li>
+            <li><span class="icon">✅</span><span>画像の保存ルール・PC 側ホットキー</span></li>
+            <li><span class="icon">✅</span><span>優先サポート</span></li>
+          </ul>
+          <div class="actions">
+            <form method="post" action="/api/checkout"><input type="hidden" name="plan" value="yearly"><button class="btn primary" type="submit">年額で 14 日間無料で試す</button></form>
+            <form method="post" action="/api/checkout"><input type="hidden" name="plan" value="monthly"><button class="btn" type="submit">月額で試す</button></form>
+          </div>
+          <p class="note">お支払いは Stripe の画面で行います。トライアル中に解約すれば料金はかかりません。期間が終わると自動で課金が始まり、以後は自動更新です。</p>
+        </div>
+      </div>
+    </section>
+
     <!-- FAQ -->
     <section class="section" id="faq" aria-labelledby="faq-title">
       <div class="section-head">
@@ -299,7 +338,8 @@
         <details class="card help"><summary>同じ Wi-Fi につなぐ必要はありますか</summary><p>両端末が同じ Tailscale ネットワークに接続できていれば、同じ Wi-Fi でなくても使えます。インターネット接続と、PC 側の HTTPS 公開設定（セットアップ画面が自動で行います）が必要です。</p></details>
         <details class="card help"><summary>PC の電源を切っていても使えますか</summary><p>使う Windows PC の電源を入れ、ClipBridge を起動しておく必要があります。「Windows にサインインしたら自動で起動する」をオンにしておくと便利です。PC がスリープ中や Tailscale が未接続のときは送受信できません。</p></details>
         <details class="card help"><summary>接続が切れた・コードを求められたら</summary><p>PC セットアップ画面に表示されている 6 桁のコードを入力するか、QR コードをもう一度読み取ります。コードは 1 回使うたびに新しくなります。ホーム画面に追加した版は接続設定を引き継ぐので、通常は再入力は不要です。</p></details>
-        <details class="card help"><summary>セットアップやアップデートも無料ですか</summary><p>はい。Python 不要の Windows アプリ、セットアップ案内、Tailscale のチェックと修復、アップデートの確認と適用を含め、ClipBridge の機能はすべて無料です。アップデートは PC セットアップ画面の「アップデートして再起動」から適用できます。</p></details>
+        <details class="card help"><summary>セットアップやアップデートも無料ですか</summary><p>はい。Python 不要の Windows アプリ、セットアップ案内、Tailscale のチェックと修復、アップデートの確認と適用、文字と画像の受け渡し、PC 2 台までの切り替えは無料です。3 台目以降の PC や履歴などは ClipBridge Pro（月額 480 円 / 年額 4,800 円、14 日間無料）で使えます。アップデートは PC セットアップ画面の「アップデートして再起動」から適用できます。</p></details>
+        <details class="card help"><summary>ClipBridge Pro は何が違いますか</summary><p>無料版の機能に加えて、3 台目以降の PC の登録、クリップボードの履歴（直近 100 件の検索・再送・ピン留め）、画像の保存ルール、PC 側のホットキー、優先サポートが使えます。1 人分の契約で PC は何台でも使え、ライセンスキーの入力は 1 台だけで済みます。月額 480 円または年額 4,800 円（税込）で、最初の 14 日間は無料です。解約は PC のセットアップ画面の「契約を管理」からいつでもできます。</p></details>
       </div>
     </section>
 
@@ -323,6 +363,7 @@
       <a href="https://github.com/hiromps/clipbridge" target="_blank" rel="noopener noreferrer">GitHub</a>
       <a href="https://github.com/hiromps/clipbridge/releases" target="_blank" rel="noopener noreferrer">リリースノート</a>
       <a href="#setup">はじめ方</a>
+      <a href="#pricing">料金</a>
       <a href="#faq">FAQ</a>
     </nav>
     <small>© 2026 ClipBridge ・ Tailscale は Tailscale Inc. の商標です。ClipBridge は同社とは無関係の個人プロジェクトです。</small>

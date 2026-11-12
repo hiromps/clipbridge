@@ -9,7 +9,12 @@ iPhone と Windows のクリップボードを、スマートに。
 ```
 app/        アプリ本体（server.py と web/）。exe もここから作る → 使い方は app/README.md
 dist/       紹介サイト（静的 HTML）。Vercel が配信する。dist/updates/windows.json は旧版 1.x 向けの更新情報
-scripts/    build_windows.py（exe・ZIP・更新マニフェスト）、build_download.py（ソース ZIP）
+api/        Vercel Functions（Python）。ClipBridge Pro の購入・ライセンス発行・更新
+licensing/  発行サーバーの本体（api/ の各ファイルから使う）
+db/         Neon（Postgres）のマイグレーション
+scripts/    build_windows.py（exe・ZIP・更新マニフェスト）、build_download.py（ソース ZIP）、
+            license_tool.py（キーの手動発行）、stripe_setup.py（Stripe の商品・価格・webhook）
+tests/      発行サーバーのテスト
 .github/    windows-build.yml（テスト → ビルド → 検証 → タグなら GitHub Release）
 ```
 
@@ -30,6 +35,47 @@ python scripts/build_windows.py       # build/windows/ に ClipBridge.exe, ClipB
 python scripts/build_download.py      # build/source/ClipBridge-Source.zip
 python -m http.server 8080 --directory dist   # 紹介サイトをローカルで確認
 ```
+
+## ClipBridge Pro の発行サーバー
+
+月額 480 円 / 年額 4,800 円（税込、14 日間の無料トライアル）のサブスクリプションです。
+Stripe で購入 → Neon に契約を保存 → 署名したライセンスキーを発行、という流れを Vercel Functions（`api/`）で行います。
+
+| エンドポイント | 役割 |
+|---|---|
+| `POST /api/checkout`（フォームの `plan=monthly\|yearly`） | Stripe の決済ページへ移動する |
+| `POST /api/stripe/webhook` | Stripe の通知を受けて契約の状態を保存する（署名検証・二重処理の防止） |
+| `GET /api/license/claim?session_id=...` | 購入直後のページ。ライセンスキーを表示する |
+| `POST /api/license/refresh` | アプリからの更新確認。契約が続いていれば期限を延ばしたキーを返す |
+| `POST /api/license/portal` | キーを見せると、解約・カード変更ページ（Stripe カスタマーポータル）の URL を返す |
+
+キーの有効期限は「支払い済みの期間の終わり + 猶予 14 日」です（トライアル中は + 1 日、解約予約中は猶予なし）。
+全額返金（`charge.refunded`）でライセンスは取り消され、アプリは次の確認でキーを外します。
+
+### 初回の設定
+
+1. **DB**: Neon のプロジェクト `clipbridge` に `db/migrations/` を番号順に適用する（適用済み）
+2. **Stripe**: 商品・価格・webhook を作る。まずテスト用のキーで試す
+
+   ```powershell
+   $env:STRIPE_SECRET_KEY = "sk_test_..."
+   python scripts/stripe_setup.py
+   ```
+
+   続けて Stripe ダッシュボードの「設定 › Billing › カスタマーポータル」を開いて保存する
+3. **Vercel の環境変数**（Production）
+
+   | 変数 | 値 |
+   |---|---|
+   | `DATABASE_URL` | Neon の接続文字列（プール接続） |
+   | `LICENSE_PRIVATE_KEY` | `license_tool.py keygen` が作った秘密鍵の JSON（`app/server.py` の公開鍵と対になるもの） |
+   | `STRIPE_SECRET_KEY` | Stripe のシークレットキー |
+   | `STRIPE_WEBHOOK_SECRET` | `stripe_setup.py` が表示した署名シークレット（`whsec_...`） |
+   | `SITE_URL` | 公開サイトの URL（既定の `https://clipbridge-ashen.vercel.app` から変えるときだけ） |
+
+4. 環境変数を変えたら再デプロイする（設定前は各エンドポイントが 503「準備中」を返す）
+
+サイトの URL を変えるときは、`app/server.py` の `SITE_URL`（配布した exe に入る）、Stripe の webhook の URL、`SITE_URL` 環境変数をそろえて変えます。
 
 ## リリース手順（他の PC に最新版を配る）
 

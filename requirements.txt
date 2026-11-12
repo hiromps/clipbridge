@@ -1,0 +1,2 @@
+# Vercel Functions（api/）用。アプリ本体（app/）は標準ライブラリだけで動く
+psycopg[binary]==3.2.13
