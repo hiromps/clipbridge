@@ -444,6 +444,76 @@ def test_http_reports_missing_configuration_without_details(monkeypatch):
     assert status == 503 and json.loads(body)["error"] == "not_ready" and "LICENSE" not in body.decode()
 
 
+class SetupStripe:
+    """stripe_setup.py 用の Stripe の代わり（商品・価格・webhook を覚える）。"""
+
+    def __init__(self, *args, **kwargs) -> None:
+        self.products: set[str] = set()
+        self.prices: dict[str, dict] = {}
+        self.webhooks: dict[str, dict] = {}
+        self.created = 0
+
+    def get(self, path, params=None):
+        if path == "/v1/account":
+            return {"id": "acct_test", "settings": {"dashboard": {"display_name": "テスト店"}}}
+        if path.startswith("/v1/products/"):
+            if path.rsplit("/", 1)[1] not in self.products:
+                raise StripeError(404, "No such product")
+            return {"id": path.rsplit("/", 1)[1]}
+        if path == "/v1/prices":
+            price = self.prices.get(params["lookup_keys"][0])
+            return {"data": [price] if price else []}
+        if path == "/v1/webhook_endpoints":
+            return {"data": list(self.webhooks.values())}
+        raise StripeError(404, path)
+
+    def post(self, path, params=None):
+        if path == "/v1/products":
+            self.products.add(params["id"])
+            return {"id": params["id"]}
+        if path == "/v1/prices":
+            self.prices[params["lookup_key"]] = {"id": "price_" + params["lookup_key"], "unit_amount": params["unit_amount"], "currency": "jpy", "active": True}
+            return self.prices[params["lookup_key"]]
+        if path == "/v1/webhook_endpoints":
+            self.created += 1
+            endpoint = {"id": f"we_{self.created}", "url": params["url"], "enabled_events": params["enabled_events"]}
+            self.webhooks[endpoint["id"]] = endpoint
+            return {**endpoint, "secret": f"whsec_{self.created}"}
+        raise StripeError(404, path)
+
+    def request(self, method, path, params=None):
+        assert method == "DELETE"
+        del self.webhooks[path.rsplit("/", 1)[1]]
+        return {"deleted": True}
+
+
+def test_setup_script_keeps_vercel_and_stripe_on_the_same_key(monkeypatch, capsys):
+    setup = load("stripe_setup_sync", ROOT / "scripts" / "stripe_setup.py")
+    stripe = SetupStripe()
+    saved: list[tuple[str, str]] = []
+    monkeypatch.setattr(setup, "StripeClient", lambda key: stripe)
+    monkeypatch.setattr(setup, "save_to_vercel", lambda name, value: saved.append((name, value)) or True)
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_abc")
+
+    assert setup.main(["--yes"]) == 0  # 通常: 作って、署名シークレットを 1 回だけ表示する
+    first = capsys.readouterr().out
+    assert "acct_test" in first and "テストモード" in first and "whsec_1" in first and "月額・年額" in first and saved == []
+    assert setup.main(["--yes"]) == 0  # 2 回目: 何も作り直さず、シークレットも出さない
+    assert "whsec" not in capsys.readouterr().out and stripe.created == 1 and len(stripe.prices) == 2
+
+    assert setup.main(["--yes", "--vercel"]) == 0  # --vercel: 同じキーを登録し、webhook を作り直す
+    synced = capsys.readouterr().out
+    assert saved == [("STRIPE_SECRET_KEY", "sk_test_abc"), ("STRIPE_WEBHOOK_SECRET", "whsec_2")]
+    assert "whsec" not in synced and "sk_test" not in synced and "作り直しました" in synced
+    assert list(stripe.webhooks) == ["we_2"] and stripe.webhooks["we_2"]["url"].endswith("/api/stripe/webhook")
+
+    monkeypatch.setattr(setup, "save_to_vercel", lambda name, value: False)  # Vercel に登録できなければ何も作らない
+    before = (stripe.created, dict(stripe.webhooks))
+    assert setup.main(["--yes", "--vercel"]) == 1 and (stripe.created, stripe.webhooks) == before
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "pk_live_not_a_secret_key")
+    assert setup.main(["--yes"]) == 1
+
+
 def test_plans_match_the_setup_script():
     setup = load("stripe_setup", ROOT / "scripts" / "stripe_setup.py")
     assert {plan["lookup_key"] for plan in setup.PLANS} == set(service_module.PLANS.values())
