@@ -4,7 +4,8 @@
     # PowerShell
     $env:STRIPE_SECRET_KEY = "sk_test_..."   # まずテスト（サンドボックス）のキーで試す
     python scripts/stripe_setup.py            # 署名シークレットを画面に表示する
-    python scripts/stripe_setup.py --vercel   # 表示せず、Vercel の STRIPE_WEBHOOK_SECRET（Production）に直接登録する
+    python scripts/stripe_setup.py --vercel   # Vercel（Production）の STRIPE_SECRET_KEY と STRIPE_WEBHOOK_SECRET も
+                                              # このキーにそろえる（webhook は作り直す。値は表示しない）
 
 作るもの:
     商品    ClipBridge Pro（ID: clipbridge_pro）
@@ -72,9 +73,15 @@ def ensure_price(stripe: StripeClient, plan: dict) -> str:
     return "作成しました"
 
 
-def ensure_webhook(stripe: StripeClient, url: str) -> tuple[str, str | None]:
+def ensure_webhook(stripe: StripeClient, url: str, recreate: bool = False) -> tuple[str, str | None]:
+    """webhook の送信先を用意する。recreate のときは、既にあっても作り直して新しい署名シークレットを受け取る。"""
+    replaced = False
     for endpoint in stripe.get("/v1/webhook_endpoints", {"limit": 100}).get("data") or []:
         if endpoint.get("url") == url:
+            if recreate:
+                stripe.request("DELETE", f"/v1/webhook_endpoints/{endpoint['id']}")
+                replaced = True
+                continue
             missing = sorted(set(WEBHOOK_EVENTS) - set(endpoint.get("enabled_events") or []))
             if missing and "*" not in (endpoint.get("enabled_events") or []):
                 stripe.post(f"/v1/webhook_endpoints/{endpoint['id']}", {"enabled_events": WEBHOOK_EVENTS})
@@ -83,22 +90,22 @@ def ensure_webhook(stripe: StripeClient, url: str) -> tuple[str, str | None]:
     created = stripe.post("/v1/webhook_endpoints", {
         "url": url, "enabled_events": WEBHOOK_EVENTS, "description": "ClipBridge Pro のライセンス発行",
     })
-    return "作成しました", created.get("secret")
+    return ("作り直しました" if replaced else "作成しました"), created.get("secret")
 
 
-def save_to_vercel(secret: str) -> bool:
-    """署名シークレットを画面に出さずに、Vercel の環境変数（Production）へ登録する。リンク済みのフォルダーで実行すること。"""
+def save_to_vercel(name: str, value: str) -> bool:
+    """値を画面に出さずに、Vercel の環境変数（Production）へ登録する。リンク済みのフォルダーで実行すること。"""
     vercel = shutil.which("vercel")
     if not vercel:
         print("vercel コマンドが見つかりません。", file=sys.stderr)
         return False
     result = subprocess.run(
-        [vercel, "env", "add", "STRIPE_WEBHOOK_SECRET", "production", "--sensitive", "--force"],
-        input=secret, text=True, capture_output=True, cwd=Path(__file__).resolve().parents[1],
+        [vercel, "env", "add", name, "production", "--sensitive", "--force"],
+        input=value, text=True, capture_output=True, cwd=Path(__file__).resolve().parents[1],
     )
     if result.returncode != 0:
         lines = (result.stderr or result.stdout or "").strip().splitlines()
-        print("Vercel への登録に失敗しました: " + (lines[-1] if lines else "理由不明"), file=sys.stderr)
+        print(f"Vercel への {name} の登録に失敗しました: " + (lines[-1] if lines else "理由不明"), file=sys.stderr)
     return result.returncode == 0
 
 
@@ -106,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="ClipBridge Pro の Stripe 設定")
     parser.add_argument("--site-url", default=os.environ.get("SITE_URL") or DEFAULT_SITE_URL, help="公開サイトの URL")
     parser.add_argument("--yes", action="store_true", help="確認を省く")
-    parser.add_argument("--vercel", action="store_true", help="署名シークレットを表示せず、Vercel の STRIPE_WEBHOOK_SECRET に登録する")
+    parser.add_argument("--vercel", action="store_true", help="Vercel（Production）の STRIPE_SECRET_KEY と STRIPE_WEBHOOK_SECRET をこのキーにそろえる（webhook は作り直す）")
     args = parser.parse_args(argv)
     secret_key = os.environ.get("STRIPE_SECRET_KEY", "").strip()
     if not secret_key.startswith(("sk_test_", "sk_live_", "rk_test_", "rk_live_")):
@@ -121,25 +128,34 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Stripe に接続できません: {exc}", file=sys.stderr)
         return 1
     name = (account.get("settings") or {}).get("dashboard", {}).get("display_name") or account.get("id")
-    print(f"アカウント: {name}（{'本番' if live else 'テスト'}モード）")
+    print(f"アカウント: {name}（{account.get('id')}、{'本番' if live else 'テスト'}モード）")
     print(f"作るもの: 商品 {PRODUCT_NAME} / 月額 480 円・年額 4,800 円 / webhook {webhook_url}")
+    if args.vercel:
+        print("Vercel（Production）: このシークレットキーを STRIPE_SECRET_KEY に、webhook を作り直して署名シークレットを STRIPE_WEBHOOK_SECRET に登録します。")
     if not args.yes and input("このアカウントに作成しますか？ (yes/no): ").strip().lower() != "yes":
         print("中止しました。")
         return 1
+    if args.vercel:
+        # サイトが使うキーと、ここで商品を作るキーを必ず同じにする（食い違うと購入画面で価格が見つからない）
+        if not save_to_vercel("STRIPE_SECRET_KEY", secret_key):
+            return 1
+        print("Vercel の STRIPE_SECRET_KEY: このキーを登録しました")
     try:
         print(f"商品 {PRODUCT_NAME}: {ensure_product(stripe)}")
         for plan in PLANS:
             print(f"価格 {plan['nickname']}（{plan['lookup_key']}）: {ensure_price(stripe, plan)}")
-        status, secret = ensure_webhook(stripe, webhook_url)
+        status, secret = ensure_webhook(stripe, webhook_url, recreate=args.vercel)
         print(f"webhook: {status}")
+        found = [
+            plan["nickname"] for plan in PLANS
+            if stripe.get("/v1/prices", {"lookup_keys": [plan["lookup_key"]], "active": True, "limit": 1}).get("data")
+        ]
+        print(f"確認: 購入画面から見える価格 = {'・'.join(found) or 'なし'}")
     except StripeError as exc:
         print(f"Stripe でエラーになりました: {exc}", file=sys.stderr)
         return 1
-    if secret and args.vercel and save_to_vercel(secret):
-        print("署名シークレットを Vercel の STRIPE_WEBHOOK_SECRET（Production）に登録しました。再デプロイで反映されます。")
-    elif not secret and args.vercel:
-        print("webhook は既にあるため、署名シークレットを取得できません（Stripe は作成時にしか返しません）。"
-              "Stripe ダッシュボードの「開発者 › Webhook」でこの送信先を削除してから、もう一度実行してください。")
+    if secret and args.vercel and save_to_vercel("STRIPE_WEBHOOK_SECRET", secret):
+        print("Vercel の STRIPE_WEBHOOK_SECRET: 新しい署名シークレットを登録しました。再デプロイで反映されます。")
     elif secret:
         print("\n署名シークレット（この 1 回だけ表示します）。Vercel の環境変数 STRIPE_WEBHOOK_SECRET に設定してください:")
         print(secret)
