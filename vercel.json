@@ -4,6 +4,9 @@
   "outputDirectory": "dist",
   "cleanUrls": true,
   "trailingSlash": false,
+  "functions": {
+    "api/**/*.py": {"excludeFiles": "{app,dist,build,scripts,tests,db,_legacy_v1,.github}/**"}
+  },
   "headers": [
     {"source": "/(.*)", "headers": [
       {"key": "X-Content-Type-Options", "value": "nosniff"},
