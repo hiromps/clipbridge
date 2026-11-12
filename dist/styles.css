@@ -235,3 +235,13 @@ main { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 var(--pad
   html { scroll-behavior: auto; }
   * { animation: none !important; transition: none !important; }
 }
+
+/* 料金 */
+.pricing { align-items: stretch; }
+.plan { display: grid; gap: 14px; align-content: start; }
+.plan h3 { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.plan.pro { border-color: var(--accent); }
+.price { margin: 0; font-size: 1.15rem; }
+.note { color: var(--muted); font-size: 0.88rem; margin: 0; }
+.price .note { display: block; margin-top: 2px; }
+.plan form { display: contents; }
