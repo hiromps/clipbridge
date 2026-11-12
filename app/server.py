@@ -46,6 +46,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -82,6 +83,11 @@ SITE_URL = "https://clipbridge-ashen.vercel.app/"
 # iPhone 用ショートカット（コピーした文字をアプリを開かずに PC へ送る）。iPhone 側の初回セットアップで案内する
 SHORTCUT_URL = "https://www.icloud.com/shortcuts/36c11823bdb7479b9fb2c47e0c917beb"
 UPDATE_CHECK_DELAY = 10.0
+# サブスクリプションのライセンス更新（期限つきのキーだけが使う。無期限のキーは通信しない）
+LICENSE_REFRESH_URL = SITE_URL + "api/license/refresh"
+LICENSE_REFRESH_DELAY = 15.0
+LICENSE_REFRESH_TICK = 6 * 3600.0       # 更新が必要かを確かめる間隔
+LICENSE_REFRESH_INTERVAL = 24 * 3600.0  # 有効なキーを発行サーバーへ問い合わせる最短間隔
 UPDATE_CHECK_INTERVAL = 6 * 3600.0
 MAX_UPDATE_BYTES = 100 * 1024 * 1024
 
@@ -659,6 +665,8 @@ def parse_license(key: str | None, public: dict | None = None, now: float | None
     result: dict = {
         "valid": False, "error": None, "id": None, "email": None, "name": None,
         "plan": None, "issued": None, "expires": None,
+        "expired": False,   # 署名は正しいが期限だけが切れている（更新の問い合わせには使える）
+        "deadline": None,   # 期限の時刻（epoch 秒）。無期限なら None
     }
     key = (key or "").strip()
     if not key:
@@ -690,7 +698,9 @@ def parse_license(key: str | None, public: dict | None = None, now: float | None
         except (ValueError, OverflowError):
             result["error"] = "有効期限の形式が不正です"
             return result
+        result["deadline"] = deadline
         if (now if now is not None else time.time()) > deadline:
+            result["expired"] = result["plan"] == "pro"
             result["error"] = f"ライセンスの有効期限（{result['expires']}）が切れています"
             return result
     if result["plan"] != "pro":
@@ -698,6 +708,50 @@ def parse_license(key: str | None, public: dict | None = None, now: float | None
         return result
     result["valid"] = True
     return result
+
+
+class LicenseRefused(Exception):
+    """発行サーバーが更新を断った（解約・返金など）。code が "revoked" のときはキーを即時に無効にする。"""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def fetch_license_refresh(
+    key: str, install_id: str, pc_name: str, url: str | None = None, opener=urllib.request.urlopen,
+) -> str:
+    """いまのキーを発行サーバーに見せ、契約が続いていれば期限を延ばした新しいキーを受け取る。
+
+    送るのはキー・この PC のランダムな ID・PC 名・版だけ（クリップボードの内容は送らない）。
+    一時的な失敗は RuntimeError、契約終了は LicenseRefused。
+    """
+    body = json.dumps({"key": key, "install_id": install_id, "pc_name": pc_name, "version": __version__}).encode("utf-8")
+    request = urllib.request.Request(
+        url or LICENSE_REFRESH_URL, data=body, method="POST",
+        headers={"User-Agent": f"{APP_NAME}/{__version__}", "Content-Type": "application/json"},
+    )
+    try:
+        with opener(request, timeout=15) as response:
+            raw = response.read(16385)
+    except urllib.error.HTTPError as exc:
+        if exc.code in (402, 403, 410):
+            try:
+                data = json.loads(exc.read(4096).decode("utf-8"))
+            except (OSError, ValueError, UnicodeDecodeError):
+                data = None
+            if isinstance(data, dict) and isinstance(data.get("error"), str):
+                raise LicenseRefused(data["error"], str(data.get("message") or "契約が有効ではありません")) from exc
+        raise RuntimeError(f"ライセンスの更新を確認できません（HTTP {exc.code}）") from exc
+    except OSError as exc:
+        raise RuntimeError(f"ライセンスの更新を確認できません（{type(exc).__name__}）") from exc
+    try:
+        data = json.loads(raw.decode("utf-8")) if len(raw) <= 16384 else None
+    except (ValueError, UnicodeDecodeError):
+        data = None
+    if not isinstance(data, dict) or not isinstance(data.get("key"), str):
+        raise RuntimeError("ライセンスの更新を確認できません（応答を読めません）")
+    return data["key"]
 
 
 # ---------------------------------------------------------------------------
@@ -1929,6 +1983,7 @@ class ClipBridgeApp:
         probe=None,
         image_dir: Path | None = None,
         history_path: Path | None = None,
+        license_refresher=None,
     ) -> None:
         self.port = port
         self.config_path = config_path
@@ -1939,7 +1994,12 @@ class ClipBridgeApp:
         self.image_dir = image_dir or (Path(configured_dir) if isinstance(configured_dir, str) and configured_dir else default_image_dir())
         self.last_image: dict | None = None
         # Pro
-        self.license = parse_license(self.config.get("license") if isinstance(self.config.get("license"), str) else None)
+        self.license = parse_license(self._stored_license())
+        self.license_refresher = license_refresher or fetch_license_refresh
+        self._license_lock = threading.RLock()
+        self._license_checked = 0.0           # 最後に発行サーバーへ問い合わせた時刻（成否を問わない）
+        self._license_renewed: float | None = None
+        self._license_refresh_error: str | None = None
         self.history = ClipHistory(history_path or config_path.with_name("history.json"))
         self.history_enabled = bool(self.config.get("history_enabled", True))
         self.image_rules = {
@@ -2012,36 +2072,125 @@ class ClipBridgeApp:
                 self.record_image(image_data, info, "pc")
 
     # --- Pro ------------------------------------------------------------------
+    def _stored_license(self) -> str | None:
+        key = self.config.get("license")
+        return key if isinstance(key, str) and key.strip() else None
+
     @property
     def pro(self) -> bool:
-        return bool(self.license.get("valid"))
+        deadline = self.license.get("deadline")
+        return bool(self.license.get("valid")) and (deadline is None or time.time() <= deadline)
 
     def license_status(self) -> dict:
-        return {
-            **self.license,
-            "pro": self.pro,
-            "features": list(PRO_FEATURES),
-            "support_url": SUPPORT_URL,
-            "support_email": SUPPORT_EMAIL,
-        }
+        with self._license_lock:
+            if self.license.get("valid") and not self.pro:
+                self.license = parse_license(self._stored_license())  # 起動中に期限を過ぎた
+            deadline = self.license.get("deadline")
+            return {
+                **self.license,
+                "pro": self.pro,
+                "features": list(PRO_FEATURES),
+                "support_url": SUPPORT_URL,
+                "support_email": SUPPORT_EMAIL,
+                "renewal": {
+                    "auto": deadline is not None,  # 期限つき（サブスクリプション）のキーは自動で更新する
+                    "days_left": max(0, int((deadline - time.time()) // 86400)) if deadline is not None else None,
+                    "checked": self._license_checked or None,
+                    "renewed": self._license_renewed,
+                    "error": self._license_refresh_error,
+                },
+            }
+
+    def _set_license(self, key: str, info: dict) -> None:
+        self.config["license"] = key.strip()
+        save_config(self.config_path, self.config)
+        self.license = info
+        self._license_refresh_error = None
+        self.start_hotkeys()
 
     def apply_license(self, key: str) -> dict:
         info = parse_license(key)
         if not info["valid"]:
             raise ValueError(info["error"] or "ライセンスキーが無効です")
-        self.config["license"] = key.strip()
-        save_config(self.config_path, self.config)
-        self.license = info
+        with self._license_lock:
+            self._set_license(key, info)
         self.log(f"license applied: {info['id']}")
-        self.start_hotkeys()
         return self.license_status()
 
     def remove_license(self) -> None:
-        self.config.pop("license", None)
-        save_config(self.config_path, self.config)
-        self.license = parse_license(None)
+        with self._license_lock:
+            self.config.pop("license", None)
+            save_config(self.config_path, self.config)
+            self.license = parse_license(None)
+            self._license_refresh_error = None
         self.hotkeys.stop()
         self.log("license removed")
+
+    def offer_license(self, key: str) -> dict:
+        """iPhone が別の PC から運んできたキーを受け取る。いまより良いときだけ入れ替える。"""
+        info = parse_license(key)
+        if not info["valid"]:
+            raise ValueError(info["error"] or "ライセンスキーが無効です")
+        with self._license_lock:
+            current = self.license
+            if self.pro:
+                if current.get("id") != info["id"]:
+                    return {"applied": False, "reason": "other_license"}  # 別の契約が有効。勝手に置き換えない
+                mine, theirs = current.get("deadline"), info.get("deadline")
+                if mine is None or (theirs is not None and theirs <= mine):
+                    return {"applied": False, "reason": "up_to_date"}
+            self._set_license(key, info)
+        self.log(f"license received from phone: {info['id']}")
+        return {"applied": True, "reason": None}
+
+    def install_id(self) -> str:
+        """この PC のインストールを区別するランダムな ID（ハードウェア情報は使わない）。"""
+        value = self.config.get("install_id")
+        if not isinstance(value, str) or len(value) < 16:
+            value = secrets.token_hex(16)
+            self.config["install_id"] = value
+            save_config(self.config_path, self.config)
+        return value
+
+    def refresh_license(self, force: bool = False) -> dict:
+        """期限つきのキーを発行サーバーで更新する。無期限のキー・キーなしでは通信しない。"""
+        with self._license_lock:
+            key = self._stored_license()
+            info = parse_license(key)
+            renewable = bool(key) and info["deadline"] is not None and (info["valid"] or info["expired"])
+            if not renewable:
+                return self.license_status()
+            if not force and info["valid"] and time.time() - self._license_checked < LICENSE_REFRESH_INTERVAL:
+                return self.license_status()
+            self._license_checked = time.time()
+            try:
+                new_key = self.license_refresher(key, self.install_id(), self.pc_name)
+                new_info = parse_license(new_key)
+                if not new_info["valid"] or new_info["id"] != info["id"]:
+                    raise RuntimeError("ライセンスの更新を確認できません（受け取ったキーを検証できません）")
+            except LicenseRefused as exc:
+                self._license_refresh_error = str(exc)
+                self.log(f"license refresh refused: {exc.code}")
+                if exc.code == "revoked":
+                    self.config.pop("license", None)
+                    save_config(self.config_path, self.config)
+                    self.license = parse_license(None)
+                    self.hotkeys.stop()
+                return self.license_status()
+            except Exception as exc:  # noqa: BLE001 - 通信できなくても期限までは使える
+                self._license_refresh_error = str(exc) if isinstance(exc, RuntimeError) else "ライセンスの更新を確認できません"
+                self.log(f"license refresh failed: {type(exc).__name__}")
+                return self.license_status()
+            self._set_license(new_key, new_info)
+            self._license_renewed = time.time()
+            self.log(f"license renewed: {new_info['id']} until {new_info['expires']}")
+            return self.license_status()
+
+    def license_tick(self) -> None:
+        self.refresh_license()
+        if not self.pro:
+            self.license_status()  # 期限を過ぎていたら表示用の状態を取り直す
+            self.hotkeys.stop()
 
     def record_text(self, text: str, source: str) -> None:
         if self.pro and self.history_enabled:
@@ -2483,26 +2632,32 @@ class ClipBridgeApp:
         self.log("restart scheduled")
         self.request_shutdown()
 
-    def start_update_checker(self, delay: float = UPDATE_CHECK_DELAY, interval: float = UPDATE_CHECK_INTERVAL) -> threading.Thread:
-        """起動直後と一定間隔で更新を確認する（結果は画面に表示するだけで、適用は利用者の操作による）。"""
-
+    def _start_periodic(self, name: str, action, delay: float, interval: float) -> threading.Thread:
         def loop() -> None:
             wait = delay
             while not self.stopping:
                 deadline = time.time() + wait
                 while not self.stopping and time.time() < deadline:
-                    time.sleep(0.5)
+                    time.sleep(min(0.5, max(0.0, deadline - time.time())))
                 if self.stopping:
                     return
                 try:
-                    self.updater.check()
+                    action()
                 except Exception:  # noqa: BLE001
                     pass
                 wait = interval
 
-        thread = threading.Thread(target=loop, name="update-check", daemon=True)
+        thread = threading.Thread(target=loop, name=name, daemon=True)
         thread.start()
         return thread
+
+    def start_update_checker(self, delay: float = UPDATE_CHECK_DELAY, interval: float = UPDATE_CHECK_INTERVAL) -> threading.Thread:
+        """起動直後と一定間隔で更新を確認する（結果は画面に表示するだけで、適用は利用者の操作による）。"""
+        return self._start_periodic("update-check", self.updater.check, delay, interval)
+
+    def start_license_refresher(self, delay: float = LICENSE_REFRESH_DELAY, interval: float = LICENSE_REFRESH_TICK) -> threading.Thread:
+        """期限つきのライセンスを自動で更新し、起動中に期限を過ぎたら Pro 機能を止める。"""
+        return self._start_periodic("license-refresh", self.license_tick, delay, interval)
 
     # --- サーバー -----------------------------------------------------------
     def serve(self) -> Server:
@@ -2777,6 +2932,17 @@ def make_handler(app: ClipBridgeApp):
                 except ValueError:
                     limit = HISTORY_LIMIT
                 return self._json(200, {"items": app.history.list(query.get("q", ""), limit), **app.history.counts()})
+            if path == "/api/license":
+                # iPhone がほかの PC へ運ぶためのキー（有効なときだけ渡す）
+                if not self._require_token():
+                    return
+                app.record_device(self)
+                status = app.license_status()
+                return self._json(200, {
+                    "pro": status["pro"], "id": status["id"] if status["pro"] else None,
+                    "expires": status["expires"] if status["pro"] else None,
+                    "key": app._stored_license() if status["pro"] else None,
+                })
             if path == "/api/peers":
                 if not self._require_token():
                     return
@@ -2932,11 +3098,33 @@ def make_handler(app: ClipBridgeApp):
                 return self._write_image()
             if path.startswith("/api/history/"):
                 return self._history_post(path)
+            if path == "/api/license":
+                return self._offer_license()
             if path.startswith("/pc/api/"):
                 return self._admin_action(path[len("/pc/api/"):])
             if path in ("/", "/api/health", "/api/events", "/manifest.webmanifest") or path in STATIC_FILES:
                 return self._error(405, "method_not_allowed", "使用できないメソッドです")
             return self._not_found()
+
+        def _offer_license(self) -> None:
+            if not self._require_token():
+                return
+            if not self._origin_ok():
+                return self._error(403, "origin_mismatch", "Origin が一致しません")
+            body = self._read_body(8192)
+            if body is None:
+                return
+            try:
+                data = json.loads(body.decode("utf-8") or "{}")
+            except (ValueError, UnicodeDecodeError):
+                return self._error(400, "bad_request", "JSON が不正です")
+            try:
+                result = app.offer_license(str(data.get("key", "")) if isinstance(data, dict) else "")
+            except ValueError as exc:
+                return self._error(400, "invalid_license", str(exc))
+            app.record_device(self)
+            status = app.license_status()
+            return self._json(200, {"ok": True, **result, "pro": status["pro"], "id": status["id"], "expires": status["expires"]})
 
         def _pair(self) -> None:
             body = self._read_body(4096)
@@ -3075,6 +3263,8 @@ def make_handler(app: ClipBridgeApp):
             if action == "license/remove":
                 app.remove_license()
                 return self._json(200, {"ok": True, "license": app.license_status()})
+            if action == "license/refresh":
+                return self._json(200, {"ok": True, "license": app.refresh_license(force=True)})
             if action.startswith("history/"):
                 if not self._require_pro():
                     return
@@ -3220,6 +3410,7 @@ def main(argv: list[str] | None = None) -> int:
         threading.Thread(target=app.ensure_serve, name="tailscale-serve", daemon=True).start()
     if not args.no_update_check:
         app.start_update_checker()
+    app.start_license_refresher()
     app.start_hotkeys()
     app.log(f"{APP_NAME} {__version__} 起動: {dashboard}" + (" (Pro)" if app.pro else ""))
     app.log("iPhone 用の接続情報（QR / コード）はこの画面に表示されます。")

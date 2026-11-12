@@ -1253,6 +1253,190 @@ def test_license_apply_and_remove_via_dashboard(app, monkeypatch):
     assert "license" not in json.loads(app.config_path.read_text(encoding="utf-8"))
 
 
+class Refresher:
+    """発行サーバーの代わり。呼び出しを記録し、決めた結果（キー or 例外）を返す。"""
+
+    def __init__(self, result=None):
+        self.result = result
+        self.calls: list[tuple[str, str, str]] = []
+
+    def __call__(self, key, install_id, pc_name):
+        self.calls.append((key, install_id, pc_name))
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
+
+
+def test_perpetual_and_missing_licenses_never_contact_the_license_server(app, monkeypatch):
+    monkeypatch.setattr(server, "LICENSE_PUBLIC_KEY", TEST_PUBLIC)
+    app.license_refresher = Refresher(issue_key(expires="2999-12-31"))
+    assert not app.refresh_license(force=True)["pro"]
+    app.apply_license(issue_key())
+    status = app.refresh_license(force=True)
+    assert status["pro"] and status["renewal"] == {"auto": False, "days_left": None, "checked": None, "renewed": None, "error": None}
+    assert app.license_refresher.calls == []
+    assert "install_id" not in json.loads(app.config_path.read_text(encoding="utf-8"))
+
+
+def test_subscription_license_renews_and_is_throttled(app, monkeypatch):
+    monkeypatch.setattr(server, "LICENSE_PUBLIC_KEY", TEST_PUBLIC)
+    old_key, new_key = issue_key(expires="2999-01-31"), issue_key(expires="2999-02-28")
+    app.apply_license(old_key)
+    app.license_refresher = Refresher(new_key)
+    status = app.refresh_license()
+    assert status["pro"] and status["expires"] == "2999-02-28" and status["renewal"]["auto"] and status["renewal"]["renewed"]
+    saved = json.loads(app.config_path.read_text(encoding="utf-8"))
+    assert saved["license"] == new_key and len(saved["install_id"]) == 32
+    assert app.license_refresher.calls == [(old_key, saved["install_id"], app.pc_name)]
+    app.refresh_license()  # 24 時間以内は問い合わせない
+    assert len(app.license_refresher.calls) == 1
+    status, _, body = admin(app, "license/refresh")  # 画面の「今すぐ確認」は間隔を無視する
+    assert status == 200 and as_json(body)["license"]["pro"] and len(app.license_refresher.calls) == 2
+    assert app.license_refresher.calls[1][1] == saved["install_id"]  # ID は使い回す
+
+
+def test_expired_subscription_key_is_kept_and_recovers_on_renewal(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "LICENSE_PUBLIC_KEY", TEST_PUBLIC)
+    expired = issue_key(expires="2020-01-01")
+    info = server.parse_license(expired)
+    assert not info["valid"] and info["expired"] and info["deadline"]
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"license": expired}), encoding="utf-8")
+    refresher = Refresher(RuntimeError("ライセンスの更新を確認できません（URLError）"))
+    application = server.ClipBridgeApp(
+        port=0, config_path=config, clipboard=server.MemoryClipboard(),
+        tailscale=FakeTailscale(status=ts_status()), startup_dir=tmp_path / "Startup", license_refresher=refresher,
+    )
+    assert not application.pro
+    status = application.refresh_license()
+    assert not status["pro"] and "URLError" in status["renewal"]["error"] and len(refresher.calls) == 1
+    application.refresh_license()  # 期限切れのあいだは間隔を空けずに確かめ直す
+    assert len(refresher.calls) == 2
+    assert json.loads(config.read_text(encoding="utf-8"))["license"] == expired  # 失敗してもキーは消さない
+    refresher.result = issue_key(expires="2999-12-31")
+    status = application.refresh_license()
+    assert status["pro"] and status["renewal"]["error"] is None and application.pro
+
+
+def test_refresh_rejects_bad_keys_and_handles_refusals(app, monkeypatch):
+    monkeypatch.setattr(server, "LICENSE_PUBLIC_KEY", TEST_PUBLIC)
+    key = issue_key(expires="2999-01-31")
+    app.apply_license(key)
+    for bad in ("CBP1.bad.key", issue_key(expires="2999-12-31", license_id="CB-OTHER"), issue_key(expires="2020-01-01")):
+        app.license_refresher = Refresher(bad)
+        status = app.refresh_license(force=True)
+        assert status["pro"] and status["expires"] == "2999-01-31" and "検証" in status["renewal"]["error"]
+    # 解約: 期限までは使える（キーは残す）
+    app.license_refresher = Refresher(server.LicenseRefused("canceled", "契約が終了しています"))
+    status = app.refresh_license(force=True)
+    assert status["pro"] and status["renewal"]["error"] == "契約が終了しています"
+    assert json.loads(app.config_path.read_text(encoding="utf-8"))["license"] == key
+    # 返金などの取り消し: その場で無効にする
+    app.license_refresher = Refresher(server.LicenseRefused("revoked", "このライセンスは取り消されました"))
+    status = app.refresh_license(force=True)
+    assert not status["pro"] and not app.pro and status["renewal"]["error"] == "このライセンスは取り消されました"
+    assert "license" not in json.loads(app.config_path.read_text(encoding="utf-8"))
+
+
+def test_pro_ends_when_the_deadline_passes_while_running(app, monkeypatch):
+    monkeypatch.setattr(server, "LICENSE_PUBLIC_KEY", TEST_PUBLIC)
+    app.apply_license(issue_key(expires="2999-01-31"))
+    app.license_refresher = Refresher(RuntimeError("offline"))
+    real_time = time.time
+    monkeypatch.setattr(server.time, "time", lambda: app.license["deadline"] + 1)
+    try:
+        assert not app.pro
+        app.license_tick()
+        status = app.license_status()
+        assert not status["pro"] and status["expired"] and "期限" in status["error"]
+    finally:
+        monkeypatch.setattr(server.time, "time", real_time)
+
+
+class FakeHTTPResponse(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+
+def test_fetch_license_refresh_sends_only_license_fields_and_maps_errors():
+    seen = {}
+
+    def ok(request, timeout=0):
+        seen["url"], seen["body"], seen["method"] = request.full_url, json.loads(request.data), request.get_method()
+        return FakeHTTPResponse(json.dumps({"key": "CBP1.a.b"}).encode())
+
+    assert server.fetch_license_refresh("CBP1.x.y", "abc", "pc", opener=ok) == "CBP1.a.b"
+    assert seen["url"] == server.LICENSE_REFRESH_URL and seen["url"].startswith("https://") and seen["method"] == "POST"
+    assert seen["body"] == {"key": "CBP1.x.y", "install_id": "abc", "pc_name": "pc", "version": server.__version__}
+
+    def http_error(code, payload):
+        def raiser(request, timeout=0):
+            raise urllib.error.HTTPError(request.full_url, code, "x", {}, io.BytesIO(payload))
+        return raiser
+
+    with pytest.raises(server.LicenseRefused) as refused:
+        server.fetch_license_refresh("k", "i", "p", opener=http_error(403, json.dumps({"error": "revoked", "message": "取り消し"}).encode()))
+    assert refused.value.code == "revoked" and str(refused.value) == "取り消し"
+    for opener_ in (http_error(404, b"Not Found"), http_error(403, b"<html>"), http_error(500, b"{}"),
+                    lambda request, timeout=0: FakeHTTPResponse(b"not json"),
+                    lambda request, timeout=0: FakeHTTPResponse(b'{"key": 1}')):
+        with pytest.raises(RuntimeError):
+            server.fetch_license_refresh("k", "i", "p", opener=opener_)
+
+    def offline(request, timeout=0):
+        raise urllib.error.URLError("down")
+
+    with pytest.raises(RuntimeError):
+        server.fetch_license_refresh("k", "i", "p", opener=offline)
+
+
+def test_phone_carries_the_license_between_pcs(app, monkeypatch):
+    monkeypatch.setattr(server, "LICENSE_PUBLIC_KEY", TEST_PUBLIC)
+    base, token = app.base, app.token
+    assert request(base, "/api/license")[0] == 401
+    assert request(base, "/api/license", method="POST", json_body={"key": issue_key()})[0] == 401
+    status, _, body = request(base, "/api/license", token=token)
+    assert status == 200 and as_json(body) == {"pro": False, "id": None, "expires": None, "key": None}
+    # 無料の PC にキーを届ける
+    assert request(base, "/api/license", method="POST", token=token, json_body={"key": "CBP1.bad.key"})[0] == 400
+    assert request(base, "/api/license", method="POST", token=token, json_body={"key": issue_key(expires="2020-01-01")})[0] == 400
+    assert request(base, "/api/license", method="POST", token=token, data=b"{", headers={"Content-Type": "application/json"})[0] == 400
+    assert request(base, "/api/license", method="POST", token=token, json_body={"key": issue_key()}, headers={"Origin": "https://evil.example"})[0] == 403
+    assert not app.pro
+    first = issue_key(expires="2999-01-31")
+    status, _, body = request(base, "/api/license", method="POST", token=token, json_body={"key": first}, headers={"Origin": "https://hub.example.ts.net"})
+    assert status == 200 and as_json(body)["applied"] and as_json(body)["pro"] and app.pro
+    # Pro の PC からはキーを読み出せる
+    status, _, body = request(base, "/api/license", token=token)
+    assert as_json(body) == {"pro": True, "id": "CB-TEST-0001", "expires": "2999-01-31", "key": first}
+    # 同じ契約の、期限が長いキーだけ入れ替える
+    older, newer = issue_key(expires="2998-01-31"), issue_key(expires="2999-02-28")
+    reply = as_json(request(base, "/api/license", method="POST", token=token, json_body={"key": older})[2])
+    assert not reply["applied"] and reply["reason"] == "up_to_date" and reply["expires"] == "2999-01-31"
+    reply = as_json(request(base, "/api/license", method="POST", token=token, json_body={"key": newer})[2])
+    assert reply["applied"] and reply["expires"] == "2999-02-28"
+    # 別の契約が有効な PC は置き換えない
+    reply = as_json(request(base, "/api/license", method="POST", token=token, json_body={"key": issue_key(license_id="CB-OTHER")})[2])
+    assert not reply["applied"] and reply["reason"] == "other_license" and app.license["id"] == "CB-TEST-0001"
+    # 無期限のキーを持つ PC は期限つきに置き換えない
+    app.apply_license(issue_key())
+    reply = as_json(request(base, "/api/license", method="POST", token=token, json_body={"key": newer})[2])
+    assert not reply["applied"] and app.license["expires"] is None
+
+
+def test_license_refresher_thread_runs_the_tick(app):
+    ticks = []
+    app.license_tick = lambda: ticks.append(1)
+    app.start_license_refresher(delay=0.01, interval=0.05)
+    deadline = time.time() + 2
+    while len(ticks) < 2 and time.time() < deadline:
+        time.sleep(0.02)
+    assert len(ticks) >= 2
+
+
 def test_history_requires_pro(app):
     status, _, body = request(app.base, "/api/history", token=app.token)
     assert status == 403 and as_json(body)["error"] == "pro_required"

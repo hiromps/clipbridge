@@ -61,6 +61,9 @@
     licenseInput: $('licenseInput'),
     licenseApplyBtn: $('licenseApplyBtn'),
     licenseRemoveBtn: $('licenseRemoveBtn'),
+    proRenewal: $('proRenewal'),
+    proRenewalText: $('proRenewalText'),
+    licenseRefreshBtn: $('licenseRefreshBtn'),
     proMsg: $('proMsg'),
     clipBadge: $('clipBadge'),
     clipMeta: $('clipMeta'),
@@ -233,17 +236,51 @@
       els.supportMailBtn.hidden = !license.support_email;
       if (license.support_email) els.supportMailBtn.href = `mailto:${license.support_email}?subject=${subject}&body=${bodyText}`;
       els.supportIssueBtn.href = `${license.support_url}&title=${subject}&body=${bodyText}`;
-      els.proLead.textContent = 'Pro の機能がすべて有効です。同じキーをほかの PC でも使えます。';
+      els.proLead.textContent = 'Pro の機能がすべて有効です。iPhone につないだほかの PC にも自動で適用されます。';
     } else {
       els.proLead.textContent = license.error && license.error !== 'ライセンスキーが入力されていません'
         ? `保存されているキーは使えません: ${license.error}`
         : '1 人分のライセンスで、お持ちの PC 何台でも使えます。キーを貼り付けて適用してください。';
+    }
+    // サブスクリプション（期限つきのキー）: 自動更新の状態と、手動で確かめるボタン
+    const renewal = license.renewal || {};
+    const subscription = !!renewal.auto && (pro || license.expired);
+    els.proRenewal.hidden = !subscription;
+    if (subscription) {
+      const parts = [pro
+        ? `${license.expires} まで有効（残り ${renewal.days_left} 日）。契約が続いているあいだは自動で延長されます。`
+        : '有効期限が切れています。契約が続いていれば「契約を確認して更新」で元に戻ります。'];
+      if (renewal.error) parts.push(`前回の確認: ${renewal.error}`);
+      els.proRenewalText.textContent = parts.join(' ');
     }
     if (lastPro !== pro) {
       lastPro = pro;
       if (pro) loadHistory();
     }
   }
+
+  els.licenseRefreshBtn.addEventListener('click', async () => {
+    els.licenseRefreshBtn.disabled = true;
+    els.proMsg.textContent = '契約を確認しています…';
+    els.proMsg.className = 'msg';
+    try {
+      const result = await adminPost('license/refresh');
+      const renewal = result.license.renewal || {};
+      if (renewal.error) {
+        els.proMsg.textContent = renewal.error;
+        els.proMsg.className = 'msg error';
+      } else {
+        els.proMsg.textContent = result.license.pro ? `確認しました。${result.license.expires} まで有効です。` : '確認しました。';
+        els.proMsg.className = 'msg ok';
+      }
+      poll();
+    } catch (error) {
+      els.proMsg.textContent = error.message;
+      els.proMsg.className = 'msg error';
+    } finally {
+      els.licenseRefreshBtn.disabled = false;
+    }
+  });
 
   els.licenseApplyBtn.addEventListener('click', async () => {
     const key = els.licenseInput.value.trim();

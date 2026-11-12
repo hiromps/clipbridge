@@ -558,11 +558,11 @@
     els.addMsg.textContent = `${addTarget.name} に接続しています…`;
     els.addMsg.className = 'msg';
     try {
-      // 3 台目以降は Pro（追加したい PC 側でライセンスが有効なこと）
+      // 3 台目以降は Pro（追加する PC か、登録済みのどれかの PC でライセンスが有効なこと）
       if (pcs.filter((pc) => pc.origin !== addTarget.origin).length >= FREE_PC_LIMIT) {
         const health = await fetchHealth(addTarget.origin);
-        if (!health || !health.pro) {
-          els.addMsg.textContent = `3 台目以降の PC を追加するには ClipBridge Pro が必要です。${addTarget.name} のセットアップ画面でライセンスを適用してから、もう一度お試しください。`;
+        if (!(health && health.pro) && !(await findLicense())) {
+          els.addMsg.textContent = '3 台目以降の PC を追加するには ClipBridge Pro が必要です。どれかの PC のセットアップ画面でライセンスを適用してから、もう一度お試しください。';
           els.addMsg.className = 'msg error';
           return;
         }
@@ -571,6 +571,7 @@
       const pc = upsertPc({ origin: addTarget.origin, name: data.pc_name || addTarget.name, token: data.token });
       toast(`${displayName(pc)} を追加しました`);
       switchTo(pc.origin);
+      shareLicense();
       showOnboarding(); // 追加した PC 用のショートカット設定を案内する
     } catch (error) {
       els.addMsg.textContent = error instanceof TypeError
@@ -1052,6 +1053,73 @@
     }
   }
 
+  // ---- Pro: ライセンスを PC から PC へ運ぶ ---------------------------------------
+  // iPhone は登録済みのすべての PC に直接つながるので、Pro が有効な PC のキーを、まだ有効でない PC
+  // （または同じ契約で期限が古い PC）へ届ける。キーは PC 側で署名を検証し、iPhone には保存しない。
+  async function licenseOf(pc) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    try {
+      const response = await fetch(pc.origin + '/api/license', { cache: 'no-store', mode: 'cors', headers: { 'X-Token': pc.token || '' }, signal: controller.signal });
+      return response.ok ? await response.json() : null;
+    } catch {
+      return null; // オフライン、または配布に対応していない古い版
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function betterLicense(a, b) {
+    // 無期限 > 期限が遠い順（expires は YYYY-MM-DD なので文字列比較でよい）
+    if (!b || !b.pro || !b.key) return a;
+    if (!a) return b;
+    if (!a.expires) return a;
+    if (!b.expires) return b;
+    return b.expires > a.expires ? b : a;
+  }
+
+  async function findLicense() {
+    const found = await Promise.all(pcs.map(licenseOf));
+    return found.reduce(betterLicense, null);
+  }
+
+  let sharingLicense = false;
+  async function shareLicense() {
+    if (sharingLicense || pcs.length < 2) return;
+    sharingLicense = true;
+    try {
+      const states = await Promise.all(pcs.map(async (pc) => ({ pc, license: await licenseOf(pc) })));
+      const best = states.map((state) => state.license).reduce(betterLicense, null);
+      if (!best) return;
+      const applied = [];
+      for (const { pc, license } of states) {
+        if (!license) continue; // つながらない PC は次の機会に
+        const behind = !license.pro || (license.id === best.id && !!license.expires && (!best.expires || best.expires > license.expires));
+        if (!behind) continue;
+        try {
+          const response = await fetch(pc.origin + '/api/license', {
+            method: 'POST', cache: 'no-store', mode: 'cors',
+            headers: { 'X-Token': pc.token || '', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: best.key }),
+          });
+          const result = response.ok ? await response.json() : null;
+          if (!result || !result.applied) continue;
+          const wasPro = !!pc.pro;
+          const updated = upsertPc({ origin: pc.origin, pro: !!result.pro });
+          if (!wasPro && result.pro) applied.push(displayName(updated));
+          if (active && active.origin === pc.origin) {
+            active = updated;
+            renderHistoryState();
+            if (result.pro) loadHistory(true);
+          }
+        } catch { /* 次の機会に */ }
+      }
+      if (applied.length) toast(`${applied.join('、')} に ClipBridge Pro を適用しました`, 'ok');
+    } finally {
+      sharingLicense = false;
+    }
+  }
+
   function renderHistoryState() {
     const pro = !!(active && active.pro);
     els.historyLocked.hidden = pro;
@@ -1210,6 +1278,7 @@
         renderUpdateNotice(pc, data);
         if (becamePro || (data.pro && !els.historyList.children.length)) loadHistory(true);
       }
+      shareLicense();
     });
   }
 
