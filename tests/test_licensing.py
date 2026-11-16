@@ -508,6 +508,7 @@ def test_http_purchase_flow(http, env):
     assert status == 200 and headers["Cache-Control"] == "no-store" and headers["X-Robots-Tag"] == "noindex"
     key = page.split('<textarea id="key" readonly spellcheck="false">')[1].split("</textarea>")[0]
     assert app_server.parse_license(key, PUBLIC)["valid"] and "無料トライアル中" in page
+    assert f'href="http://127.0.0.1:8787/pc#license={key}"' in page  # この PC の ClipBridge に適用するボタン
     assert http("/api/license/claim?session_id=<script>")[0] == 400 and http("/api/license/claim", method="POST", data=b"")[0] == 405
 
     json_headers = {"Content-Type": "application/json"}

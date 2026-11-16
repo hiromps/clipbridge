@@ -283,6 +283,50 @@
     }
   });
 
+  // 購入後のページの「この PC の ClipBridge に適用する」から /pc#license=<キー> で開かれたとき、そのキーを適用する。
+  // キーは # 以降にあるのでサーバーには送られない。読み取ったらすぐ URL から消す
+  let pendingLicense = null;
+  if (location.hash.startsWith('#license=')) {
+    const match = /^#license=(CBP1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/.exec(location.hash);
+    history.replaceState(null, '', location.pathname);
+    if (match) pendingLicense = match[1];
+  }
+
+  function licenseIdOf(key) {
+    try {
+      const body = key.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const bytes = Uint8Array.from(atob(body), (char) => char.charCodeAt(0));
+      return JSON.parse(new TextDecoder().decode(bytes)).id || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function applyPendingLicense(status) {
+    if (!pendingLicense) return;
+    const key = pendingLicense;
+    pendingLicense = null;
+    document.getElementById('proTitle').scrollIntoView({ block: 'start' });
+    const current = status.license || {};
+    if (status.pro && current.id !== licenseIdOf(key)) {
+      // 別の契約が有効な PC は、黙って置き換えない
+      els.proMsg.textContent = `この PC では別のライセンス（${current.id || '—'}）が有効なため、適用しませんでした。置き換えるには「この PC からライセンスを外す」を押してから、もう一度お試しください。`;
+      els.proMsg.className = 'msg error';
+      return;
+    }
+    try {
+      const result = await adminPost('license', { key });
+      els.proMsg.textContent = `Pro を有効にしました（${result.license.id}）`;
+      els.proMsg.className = 'msg ok';
+      toast('ClipBridge Pro が有効になりました', 'ok');
+      poll();
+    } catch (error) {
+      els.licenseInput.value = key;
+      els.proMsg.textContent = error.message;
+      els.proMsg.className = 'msg error';
+    }
+  }
+
   els.licenseApplyBtn.addEventListener('click', async () => {
     const key = els.licenseInput.value.trim();
     if (!key) { els.proMsg.textContent = 'ライセンスキーを貼り付けてください。'; els.proMsg.className = 'msg error'; return; }
@@ -754,7 +798,9 @@
     try {
       const response = await fetch('/pc/api/status', { cache: 'no-store' });
       if (!response.ok) throw new Error(String(response.status));
-      render(await response.json());
+      const status = await response.json();
+      render(status);
+      applyPendingLicense(status);
       els.serverPill.className = 'pill ok';
       els.serverPill.textContent = 'サーバー稼働中';
     } catch {

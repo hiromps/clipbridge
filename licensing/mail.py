@@ -45,19 +45,19 @@ def license_email(*, key: str, license_id: str, expires: str, trial: bool, claim
     lead = ("ClipBridge Pro にご登録いただき、ありがとうございます。14 日間の無料トライアルが始まりました。"
             if trial else "ClipBridge Pro にご登録いただき、ありがとうございます。")
     steps = [
-        "PC で ClipBridge のセットアップ画面を開く",
-        "「ClipBridge Pro」の欄にキーを貼り付けて「ライセンスを適用」を押す",
+        "ClipBridge を使っている PC で、下の「ライセンスを適用するページ」を開く",
+        "「この PC の ClipBridge に適用する」を押す（うまく開かないときは、キーをセットアップ画面の「ClipBridge Pro」欄に貼り付けて適用）",
         "2 台目以降の PC は、iPhone の ClipBridge を開くと自動で適用されます",
     ]
     renew = (f"このキーの有効期限は {expires} です。契約が続いているあいだは、アプリが自動で延長します。"
-             "期限を過ぎたあとに別の PC へ入力するときは、下のページで最新のキーを確認してください。")
+             "期限を過ぎたあとに別の PC へ入力するときも、下のページで最新のキーを使えます。")
     cancel = "解約やカードの変更は、PC のセットアップ画面の「契約を管理（解約・カード変更）」から行えます。"
     text = "\n".join([
         lead, "",
         f"ライセンスキー（ライセンス ID: {license_id}）", key, "",
         "使い方", *[f"{index}. {step}" for index, step in enumerate(steps, 1)], "",
         renew, "",
-        "最新のキーを確認するページ（このリンクは他の人に教えないでください）", claim_url, "",
+        "ライセンスを適用するページ（このリンクは他の人に教えないでください）", claim_url, "",
         cancel, "",
         f"特定商取引法に基づく表記: {site_url}/tokushoho",
         "このメールに心当たりがない場合は、お手数ですが破棄してください。",
@@ -70,7 +70,7 @@ def license_email(*, key: str, license_id: str, expires: str, trial: bool, claim
 <p><strong>使い方</strong></p>
 <ol>{''.join(f'<li>{esc(step)}</li>' for step in steps)}</ol>
 <p>{esc(renew)}</p>
-<p><a href="{esc(claim_url, quote=True)}">最新のキーを確認するページを開く</a><br><span style="color: #5b6677; font-size: 13px;">このリンクは他の人に教えないでください。</span></p>
+<p><a href="{esc(claim_url, quote=True)}">ライセンスを適用するページを開く</a><br><span style="color: #5b6677; font-size: 13px;">このリンクは他の人に教えないでください。</span></p>
 <p>{esc(cancel)}</p>
 <p style="color: #5b6677; font-size: 13px;"><a href="{esc(site_url, quote=True)}/tokushoho">特定商取引法に基づく表記</a><br>このメールに心当たりがない場合は、お手数ですが破棄してください。</p>
 </div>"""
