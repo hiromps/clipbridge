@@ -245,3 +245,17 @@ main { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 var(--pad
 .note { color: var(--muted); font-size: 0.88rem; margin: 0; }
 .price .note { display: block; margin-top: 2px; }
 .plan form { display: contents; }
+
+/* 特定商取引法に基づく表記 */
+.legal h1 { font-size: clamp(1.5rem, 4vw, 2rem); margin: 0; }
+.legal-list { display: grid; grid-template-columns: minmax(9em, 14em) minmax(0, 1fr); gap: 0; margin: 0; }
+.legal-list dt, .legal-list dd { margin: 0; padding: 14px 0; border-top: 1px solid var(--line); }
+.legal-list dt { font-weight: 700; padding-right: 16px; }
+.legal-list dt:first-of-type, .legal-list dt:first-of-type + dd { border-top: 0; padding-top: 0; }
+.legal-list .note { display: inline-block; margin-top: 2px; }
+@media (max-width: 640px) {
+  .legal-list { grid-template-columns: minmax(0, 1fr); }
+  .legal-list dd { border-top: 0; padding-top: 0; }
+  .legal-list dt { padding-bottom: 4px; }
+  .legal-list dt:first-of-type + dd { padding-top: 0; }
+}
