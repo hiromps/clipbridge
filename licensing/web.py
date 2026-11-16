@@ -26,6 +26,9 @@ from .store import PostgresStore
 from .stripe import StripeClient, StripeError
 
 DEFAULT_SITE_URL = "https://clipbridge-ashen.vercel.app"
+# PC で動いている ClipBridge のセットアップ画面（既定のポート）。#license=<キー> を付けて開くと、アプリがキーを適用する。
+# キーは URL の # 以降に入れるので、どのサーバーにも送られない
+LOCAL_APP_URL = "http://127.0.0.1:8787/pc"
 MAX_BODY = 64 * 1024
 
 
@@ -248,6 +251,7 @@ PAGE = """<!doctype html>
   .card { background: #fff; border: 1px solid #dfe5ee; border-radius: 14px; padding: 20px; margin: 20px 0; }
   textarea { width: 100%; box-sizing: border-box; min-height: 150px; padding: 12px; border: 1px solid #c9d2df; border-radius: 10px; font: 13px/1.5 ui-monospace, Consolas, monospace; word-break: break-all; resize: vertical; background: #f8fafc; color: inherit; }
   button, .btn { display: inline-block; margin-top: 12px; padding: 10px 18px; border: 0; border-radius: 10px; background: #2563eb; color: #fff; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; }
+  button.secondary { background: transparent; color: #2563eb; border: 1px solid #2563eb; }
   ol { padding-left: 1.3em; margin: 8px 0 0; }
   .note { color: #5b6677; font-size: .92rem; }
   a { color: #2563eb; }
@@ -273,20 +277,23 @@ def render_claim(result: dict) -> str:
     trial = "無料トライアル中です。" if result.get("status") == "trialing" else ""
     return f"""
 <h1>ご登録ありがとうございます</h1>
-<p>{trial}下のライセンスキーを PC の ClipBridge に貼り付けると、Pro の機能が使えるようになります。</p>
+<p>{trial}ClipBridge を使っている PC でこのページを開き、下のボタンを押すと Pro の機能が使えるようになります。</p>
 <div class="card">
-  <label for="key"><strong>ライセンスキー</strong>（ライセンス ID: {license_id}）</label>
-  <textarea id="key" readonly spellcheck="false">{key}</textarea>
-  <button type="button" id="copy">キーをコピー</button>
-  <p class="note" id="copied" aria-live="polite"></p>
+  <strong>この PC で使う</strong>
+  <p class="note">ClipBridge を起動した状態で押してください。セットアップ画面が開き、ライセンスが自動で適用されます。</p>
+  <a class="btn" id="apply" href="{LOCAL_APP_URL}#license={key}">この PC の ClipBridge に適用する</a>
+  <p class="note">2 台目以降の PC は、iPhone の ClipBridge を開くと自動で適用されます。</p>
 </div>
 <div class="card">
-  <strong>使い方</strong>
+  <label for="key"><strong>うまく開かないときは、キーを貼り付けて適用</strong>（ライセンス ID: {license_id}）</label>
+  <textarea id="key" readonly spellcheck="false">{key}</textarea>
+  <button type="button" id="copy" class="secondary">キーをコピー</button>
+  <p class="note" id="copied" aria-live="polite"></p>
   <ol>
     <li>PC で ClipBridge のセットアップ画面を開く</li>
     <li>「ClipBridge Pro」の欄にキーを貼り付けて「ライセンスを適用」を押す</li>
-    <li>2 台目以降の PC は、iPhone の ClipBridge を開くと自動で適用されます</li>
   </ol>
+  <p class="note">ボタンで開かないのは、ClipBridge が起動していない、版が古い、スマートフォンで開いている、のいずれかです。</p>
 </div>
 <p class="note">このキーの有効期限は {expires} です。契約が続いているあいだは、アプリが自動で延長します。
 このページはブックマークしておくと、あとからキーを確認できます。解約やカードの変更は、PC のセットアップ画面の「契約を管理」から行えます。</p>
