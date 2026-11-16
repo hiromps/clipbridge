@@ -6,6 +6,7 @@ import re
 import time
 
 from . import keys
+from .mail import license_email
 from .stripe import StripeError, verify_webhook
 
 PRODUCT = "clipbridge"
@@ -63,13 +64,14 @@ def key_expiry(license_row: dict, now: dt.datetime) -> str | None:
 
 
 class Service:
-    def __init__(self, *, store, stripe, private_key: dict, site_url: str, webhook_secret: str = "", clock=time.time) -> None:
+    def __init__(self, *, store, stripe, private_key: dict, site_url: str, webhook_secret: str = "", clock=time.time, mailer=None) -> None:
         self.store = store
         self.stripe = stripe
         self.private_key = private_key
         self.site_url = site_url.rstrip("/")
         self.webhook_secret = webhook_secret
         self.clock = clock
+        self.mailer = mailer  # None ならメールを送らない（未設定でも購入とキーの発行は動く）
 
     def _now(self) -> dt.datetime:
         return dt.datetime.fromtimestamp(self.clock(), dt.timezone.utc)
@@ -132,7 +134,10 @@ class Service:
             if not self.store.record_event(event["id"], event["type"]):
                 return "duplicate"
             if event["type"] == "checkout.session.completed":
-                return "license" if self._license_for_session(obj) else "ignored"
+                license_row = self._license_for_session(obj)
+                if not license_row:
+                    return "ignored"
+                return "license+mail" if self._send_key_email(license_row, str(obj.get("id") or "")) else "license"
             if event["type"] in ("customer.subscription.updated", "customer.subscription.deleted"):
                 state = subscription_state(obj)
                 if event["type"] == "customer.subscription.deleted":
@@ -148,6 +153,23 @@ class Service:
                     return "revoked" if self.store.revoke_customer(obj["customer"], self._now()) else "ignored"
                 return "ignored"
         return "ignored"
+
+    def _send_key_email(self, license_row: dict, session_id: str) -> bool:
+        """購入完了のメールを 1 契約につき 1 回だけ送る。送信に失敗したら例外（webhook ごと取り消して再送に任せる）。"""
+        if self.mailer is None or not license_row.get("email") or not SESSION_ID_RE.fullmatch(session_id):
+            return False
+        if key_expiry(license_row, self._now()) is None:
+            return False  # 契約が有効でない（送るキーがない）
+        if not self.store.mark_key_emailed(license_row["id"], self._now()):
+            return False  # 送信済み
+        issued = self._issue(license_row)
+        message = license_email(
+            key=issued["key"], license_id=issued["id"], expires=issued["expires"],
+            trial=license_row.get("status") == "trialing",
+            claim_url=f"{self.site_url}/api/license/claim?session_id={session_id}", site_url=self.site_url,
+        )
+        self.mailer.send(to=license_row["email"], idempotency_key=f"license-key/{license_row['id']}", **message)
+        return True
 
     # --- キーの受け取り（購入直後のページ） -------------------------------------------
     def claim(self, session_id: str) -> dict:

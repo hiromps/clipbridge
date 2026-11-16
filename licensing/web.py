@@ -6,6 +6,9 @@
     STRIPE_WEBHOOK_SECRET   webhook の署名シークレット（whsec_...）
     LICENSE_PRIVATE_KEY     license_tool.py keygen が作った秘密鍵の JSON
     SITE_URL                公開サイトの URL（省略時は既定の本番 URL）
+    RESEND_API_KEY          Resend の API キー（未設定ならメールを送らない）
+    MAIL_FROM               送信元。例: ClipBridge <noreply@example.com>（Resend で認証したドメイン）
+    MAIL_REPLY_TO           返信先（省略可）
 """
 from __future__ import annotations
 
@@ -17,6 +20,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlsplit
 
 from . import keys
+from .mail import ResendMailer
 from .service import Refused, Service
 from .store import PostgresStore
 from .stripe import StripeClient, StripeError
@@ -51,9 +55,13 @@ def build_service(*, database: bool, webhook: bool = False) -> Service:
     private_key = keys.load_private_key(_env("LICENSE_PRIVATE_KEY"))
     stripe = StripeClient(_env("STRIPE_SECRET_KEY"))
     webhook_secret = _env("STRIPE_WEBHOOK_SECRET") if webhook else ""
+    mailer = None
+    resend_key, mail_from = os.environ.get("RESEND_API_KEY", "").strip(), os.environ.get("MAIL_FROM", "").strip()
+    if webhook and resend_key and mail_from:
+        mailer = ResendMailer(resend_key, mail_from, os.environ.get("MAIL_REPLY_TO", "").strip())
     store = PostgresStore.connect(_env("DATABASE_URL")) if database else _NoStore()
     return Service(
-        store=store, stripe=stripe, private_key=private_key, webhook_secret=webhook_secret,
+        store=store, stripe=stripe, private_key=private_key, webhook_secret=webhook_secret, mailer=mailer,
         site_url=os.environ.get("SITE_URL", "").strip() or DEFAULT_SITE_URL,
     )
 
