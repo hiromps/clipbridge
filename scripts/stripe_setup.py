@@ -73,15 +73,33 @@ def ensure_price(stripe: StripeClient, plan: dict) -> str:
     return "作成しました"
 
 
-def ensure_webhook(stripe: StripeClient, url: str, recreate: bool = False) -> tuple[str, str | None]:
-    """webhook の送信先を用意する。recreate のときは、既にあっても作り直して新しい署名シークレットを受け取る。"""
-    replaced = False
+def rotate_webhook(stripe: StripeClient, url: str, save) -> str | None:
+    """webhook の送信先を作り直し、新しい署名シークレットを save に渡す。失敗したら None。
+
+    古い送信先は、新しい送信先ができてシークレットを保存できたあとで消す。途中で失敗しても
+    古い送信先（と、デプロイ済みのシークレット）はそのまま残る。
+    """
+    old = [
+        endpoint["id"] for endpoint in stripe.get("/v1/webhook_endpoints", {"limit": 100}).get("data") or []
+        if endpoint.get("url") == url
+    ]
+    created = stripe.post("/v1/webhook_endpoints", {
+        "url": url, "enabled_events": WEBHOOK_EVENTS, "description": "ClipBridge Pro のライセンス発行",
+    })
+    if not created.get("secret") or not save(created["secret"]):
+        stripe.request("DELETE", f"/v1/webhook_endpoints/{created['id']}")  # 保存できなかった新しい送信先は残さない
+        return None
+    for endpoint_id in old:
+        try:
+            stripe.request("DELETE", f"/v1/webhook_endpoints/{endpoint_id}")
+        except StripeError as exc:
+            print(f"古い webhook（{endpoint_id}）を削除できませんでした: {exc}。Stripe ダッシュボードで削除してください。", file=sys.stderr)
+    return "作り直しました" if old else "作成しました"
+
+
+def ensure_webhook(stripe: StripeClient, url: str) -> tuple[str, str | None]:
     for endpoint in stripe.get("/v1/webhook_endpoints", {"limit": 100}).get("data") or []:
         if endpoint.get("url") == url:
-            if recreate:
-                stripe.request("DELETE", f"/v1/webhook_endpoints/{endpoint['id']}")
-                replaced = True
-                continue
             missing = sorted(set(WEBHOOK_EVENTS) - set(endpoint.get("enabled_events") or []))
             if missing and "*" not in (endpoint.get("enabled_events") or []):
                 stripe.post(f"/v1/webhook_endpoints/{endpoint['id']}", {"enabled_events": WEBHOOK_EVENTS})
@@ -90,7 +108,7 @@ def ensure_webhook(stripe: StripeClient, url: str, recreate: bool = False) -> tu
     created = stripe.post("/v1/webhook_endpoints", {
         "url": url, "enabled_events": WEBHOOK_EVENTS, "description": "ClipBridge Pro のライセンス発行",
     })
-    return ("作り直しました" if replaced else "作成しました"), created.get("secret")
+    return "作成しました", created.get("secret")
 
 
 def save_to_vercel(name: str, value: str) -> bool:
@@ -144,7 +162,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"商品 {PRODUCT_NAME}: {ensure_product(stripe)}")
         for plan in PLANS:
             print(f"価格 {plan['nickname']}（{plan['lookup_key']}）: {ensure_price(stripe, plan)}")
-        status, secret = ensure_webhook(stripe, webhook_url, recreate=args.vercel)
+        if args.vercel:
+            secret = None
+            status = rotate_webhook(stripe, webhook_url, lambda value: save_to_vercel("STRIPE_WEBHOOK_SECRET", value))
+            if status is None:
+                print("webhook: 署名シークレットを Vercel に登録できなかったため、作り直しを取り消しました（これまでの送信先はそのままです）。", file=sys.stderr)
+                return 1
+        else:
+            status, secret = ensure_webhook(stripe, webhook_url)
         print(f"webhook: {status}")
         found = [
             plan["nickname"] for plan in PLANS
@@ -154,8 +179,9 @@ def main(argv: list[str] | None = None) -> int:
     except StripeError as exc:
         print(f"Stripe でエラーになりました: {exc}", file=sys.stderr)
         return 1
-    if secret and args.vercel and save_to_vercel("STRIPE_WEBHOOK_SECRET", secret):
-        print("Vercel の STRIPE_WEBHOOK_SECRET: 新しい署名シークレットを登録しました。再デプロイで反映されます。")
+    if args.vercel:
+        print("Vercel の STRIPE_WEBHOOK_SECRET: 新しい署名シークレットを登録しました。再デプロイで反映されます"
+              "（それまでに届いた通知は Stripe が自動で再送します）。")
     elif secret:
         print("\n署名シークレット（この 1 回だけ表示します）。Vercel の環境変数 STRIPE_WEBHOOK_SECRET に設定してください:")
         print(secret)

@@ -507,6 +507,11 @@ def test_setup_script_keeps_vercel_and_stripe_on_the_same_key(monkeypatch, capsy
     assert "whsec" not in synced and "sk_test" not in synced and "作り直しました" in synced
     assert list(stripe.webhooks) == ["we_2"] and stripe.webhooks["we_2"]["url"].endswith("/api/stripe/webhook")
 
+    # 署名シークレットだけ登録に失敗 → 新しい送信先は取り消し、これまでの送信先を残す
+    monkeypatch.setattr(setup, "save_to_vercel", lambda name, value: name == "STRIPE_SECRET_KEY")
+    assert setup.main(["--yes", "--vercel"]) == 1
+    assert list(stripe.webhooks) == ["we_2"] and stripe.created == 3 and "whsec" not in capsys.readouterr().out
+
     monkeypatch.setattr(setup, "save_to_vercel", lambda name, value: False)  # Vercel に登録できなければ何も作らない
     before = (stripe.created, dict(stripe.webhooks))
     assert setup.main(["--yes", "--vercel"]) == 1 and (stripe.created, stripe.webhooks) == before
