@@ -52,6 +52,10 @@ Stripe で購入 → Neon に契約を保存 → 署名したライセンスキ�
 キーの有効期限は「支払い済みの期間の終わり + 猶予 14 日」です（トライアル中は + 1 日、解約予約中は猶予なし）。
 全額返金（`charge.refunded`）でライセンスは取り消され、アプリは次の確認でキーを外します。
 
+購入が完了すると（`checkout.session.completed`）、ライセンスキーと「最新のキーを確認するページ」へのリンクを
+購入者にメールで送ります（Resend）。送るのは 1 契約につき 1 回です。送信に失敗したときは webhook ごと取り消し、
+Stripe の再送でやり直します。
+
 ### 初回の設定
 
 1. **DB**: Neon のプロジェクト `clipbridge` に `db/migrations/` を番号順に適用する（適用済み）
@@ -72,6 +76,9 @@ Stripe で購入 → Neon に契約を保存 → 署名したライセンスキ�
    | `STRIPE_SECRET_KEY` | Stripe のシークレットキー |
    | `STRIPE_WEBHOOK_SECRET` | `stripe_setup.py` が表示した署名シークレット（`whsec_...`） |
    | `SITE_URL` | 公開サイトの URL（既定の `https://clipbridge-ashen.vercel.app` から変えるときだけ） |
+   | `RESEND_API_KEY` | Resend の API キー。未設定ならメールを送らない（購入とキーの発行は動く） |
+   | `MAIL_FROM` | 送信元。例: `ClipBridge <noreply@example.com>`（Resend で認証したドメインのアドレス） |
+   | `MAIL_REPLY_TO` | 返信先（省略可） |
 
 4. 環境変数を変えたら再デプロイする（設定前は各エンドポイントが 503「準備中」を返す）
 

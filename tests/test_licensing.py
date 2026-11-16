@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from licensing import keys, service as service_module, web  # noqa: E402
+from licensing.mail import MailError, ResendMailer, license_email  # noqa: E402
 from licensing.service import Refused, Service, key_expiry, subscription_state  # noqa: E402
 from licensing.store import MemoryStore  # noqa: E402
 from licensing.stripe import StripeClient, StripeError, flatten, sign_webhook, verify_webhook  # noqa: E402
@@ -274,6 +275,115 @@ def test_webhook_rejects_bad_signatures_and_rolls_back_on_failure(env):
     assert event(env, "evt_10", "checkout.session.completed", checkout_session(metadata={"product": "other"})) == "ignored"
     assert event(env, "evt_11", "invoice.paid", {"id": "in_1"}) == "ignored"
     assert event(env, "evt_12", "customer.subscription.updated", subscription(id="sub_unknown")) == "ignored"
+
+
+# --- 購入完了メール ---------------------------------------------------------------------
+
+class FakeMailer:
+    def __init__(self) -> None:
+        self.sent: list[dict] = []
+        self.fail = False
+
+    def send(self, **message) -> None:
+        if self.fail:
+            raise MailError("down")
+        self.sent.append(message)
+
+
+def test_purchase_email_is_sent_once_with_a_working_key(env):
+    env.mailer = FakeMailer()
+    assert event(env, "evt_m1", "checkout.session.completed", checkout_session()) == "license+mail"
+    (message,) = env.mailer.sent
+    assert message["to"] == "buyer@example.com" and "ライセンスキー" in message["subject"]
+    license_id = next(iter(env.store.licenses))
+    assert message["idempotency_key"] == f"license-key/{license_id}"
+    key = next(line for line in message["text"].splitlines() if line.startswith("CBP1."))
+    assert app_server.parse_license(key, PUBLIC)["id"] == license_id and key in message["html_body"]
+    claim_url = f"https://example.test/api/license/claim?session_id={SESSION_ID}"
+    assert claim_url in message["text"] and claim_url in message["html_body"] and "無料トライアル" in message["text"]
+    assert "https://example.test/tokushoho" in message["text"]
+    # 別のイベントとして届き直しても、受け取りページを開いても、2 通目は送らない
+    assert event(env, "evt_m2", "checkout.session.completed", checkout_session()) == "license"
+    env.claim(SESSION_ID)
+    assert len(env.mailer.sent) == 1
+
+
+def test_purchase_email_failure_rolls_back_so_stripe_retries(env):
+    env.mailer = FakeMailer()
+    env.mailer.fail = True
+    with pytest.raises(MailError):
+        event(env, "evt_m1", "checkout.session.completed", checkout_session())
+    assert env.store.events == {} and env.store.licenses == {}
+    env.mailer.fail = False
+    assert event(env, "evt_m1", "checkout.session.completed", checkout_session()) == "license+mail"
+    assert len(env.mailer.sent) == 1
+
+
+def test_purchase_email_is_skipped_when_it_cannot_be_sent(env):
+    assert event(env, "evt_m1", "checkout.session.completed", checkout_session()) == "license"  # mailer なし
+    env.mailer = FakeMailer()
+    env.stripe_fake.subscriptions["sub_2"] = subscription(id="sub_2")
+    no_address = checkout_session(subscription="sub_2", customer="cus_2", customer_details={})
+    assert event(env, "evt_m2", "checkout.session.completed", no_address) == "license"
+    env.stripe_fake.subscriptions["sub_3"] = subscription("incomplete", id="sub_3")
+    not_live = checkout_session(subscription="sub_3", customer="cus_3")
+    assert event(env, "evt_m3", "checkout.session.completed", not_live) == "license"
+    assert env.mailer.sent == []
+
+
+def test_resend_mailer_request_and_errors():
+    seen = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self):
+            return b'{"id": "x"}'
+
+    def opener(request, timeout=0):
+        seen.update(url=request.full_url, body=json.loads(request.data), headers={k.lower(): v for k, v in request.header_items()})
+        return Response()
+
+    message = license_email(key="CBP1.a.b", license_id="CB-1", expires="2026-12-01", trial=False,
+                            claim_url="https://example.test/api/license/claim?session_id=cs_x&y=<1>", site_url="https://example.test")
+    assert "無料トライアル" not in message["text"] and "&lt;1&gt;" in message["html_body"] and "<1>" not in message["html_body"]
+    ResendMailer("re_key", "ClipBridge <noreply@example.test>", "help@example.test", opener=opener).send(
+        to="a@example.com", idempotency_key="license-key/CB-1", **message)
+    assert seen["url"] == "https://api.resend.com/emails" and seen["headers"]["authorization"] == "Bearer re_key"
+    assert seen["headers"]["idempotency-key"] == "license-key/CB-1" and seen["headers"]["user-agent"].startswith("ClipBridge")
+    assert seen["body"]["from"] == "ClipBridge <noreply@example.test>" and seen["body"]["to"] == ["a@example.com"]
+    assert seen["body"]["reply_to"] == "help@example.test" and seen["body"]["text"] == message["text"]
+    ResendMailer("re_key", "x@example.test", opener=opener).send(to="a@example.com", idempotency_key="k", **message)
+    assert "reply_to" not in seen["body"]
+
+    def rejected(request, timeout=0):
+        raise urllib.error.HTTPError(request.full_url, 422, "x", {}, __import__("io").BytesIO(b'{"message": "secret detail"}'))
+
+    def offline(request, timeout=0):
+        raise urllib.error.URLError("down")
+
+    for bad in (rejected, offline):
+        with pytest.raises(MailError) as error:
+            ResendMailer("re_key", "x@example.test", opener=bad).send(to="a@example.com", idempotency_key="k", **message)
+        assert "re_key" not in str(error.value) and "secret detail" not in str(error.value)
+
+
+def test_mailer_is_built_only_for_the_webhook_when_configured(monkeypatch):
+    monkeypatch.setenv("LICENSE_PRIVATE_KEY", json.dumps({k: str(v) for k, v in PRIVATE.items()}))
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_x")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_x")
+    monkeypatch.setenv("RESEND_API_KEY", "re_x")
+    monkeypatch.delenv("MAIL_FROM", raising=False)
+    assert web.build_service(database=False, webhook=True).mailer is None  # 送信元が未設定
+    monkeypatch.setenv("MAIL_FROM", "ClipBridge <noreply@example.test>")
+    monkeypatch.setenv("MAIL_REPLY_TO", "help@example.test")
+    mailer = web.build_service(database=False, webhook=True).mailer
+    assert mailer.sender == "ClipBridge <noreply@example.test>" and mailer.reply_to == "help@example.test"
+    assert web.build_service(database=False).mailer is None
 
 
 # --- 更新・解約・返金 ---------------------------------------------------------------------

@@ -93,6 +93,14 @@ class PostgresStore:
         )
         return cursor.rowcount
 
+    def mark_key_emailed(self, license_id: str, now: dt.datetime) -> bool:
+        """購入完了メールの送信を記録する。まだ送っていなければ True（呼び出し側が送る）。"""
+        cursor = self.conn.execute(
+            "UPDATE licenses SET key_emailed_at = %s, updated_at = now() WHERE id = %s AND key_emailed_at IS NULL",
+            (now, license_id),
+        )
+        return cursor.rowcount == 1
+
     def touch_install(self, license_id: str, install_id: str, pc_name: str, version: str) -> None:
         self.conn.execute(
             """
@@ -151,6 +159,7 @@ class MemoryStore:
             "id": new_license_id(now), "email": email, "name": name, "plan_interval": interval,
             "stripe_customer_id": customer_id, "stripe_subscription_id": subscription_id, "status": status,
             "current_period_end": period_end, "cancel_at_period_end": cancel_at_period_end, "revoked_at": None,
+            "key_emailed_at": None,
         }
         self.licenses[row["id"]] = row
         return dict(row)
@@ -172,6 +181,13 @@ class MemoryStore:
                 row["revoked_at"] = now
                 count += 1
         return count
+
+    def mark_key_emailed(self, license_id: str, now) -> bool:
+        row = self.licenses.get(license_id)
+        if row is None or row["key_emailed_at"] is not None:
+            return False
+        row["key_emailed_at"] = now
+        return True
 
     def touch_install(self, license_id: str, install_id: str, pc_name: str, version: str) -> None:
         self.installs[(license_id, install_id)] = {"pc_name": pc_name, "version": version}
