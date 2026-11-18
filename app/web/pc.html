@@ -287,6 +287,9 @@
       <h2 id="settingsTitle">設定</h2>
       <label class="switch" for="startupToggle"><input id="startupToggle" type="checkbox"><span>Windows にサインインしたら自動で起動する</span></label>
       <p id="startupMsg" class="hint"></p>
+      <label class="switch" for="relayToggle"><input id="relayToggle" type="checkbox"><span>ショートカットで届いた文字を、ほかの PC にも転送する</span></label>
+      <p id="relayMsg" class="hint">iPhone のショートカットは 1 つで、同じ Tailscale アカウントで ClipBridge が動いているすべての PC に届きます。オフにすると、ほかの PC への転送もほかの PC からの受け取りもしません。</p>
+      <p id="relayLast" class="meta"></p>
       <div class="actions">
         <button id="rotateBtn" class="btn danger" type="button">すべての iPhone の接続を解除する</button>
         <button id="stopBtn" class="btn" type="button">サーバーを停止する</button>

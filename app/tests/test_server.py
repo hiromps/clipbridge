@@ -1766,3 +1766,93 @@ def test_dashboard_copies_last_phone_image_again(app):
     assert clip["kind"] == "image" and clip["source"] == "phone" and clip["image"]["width"] == 4
     # PC 画面以外（Origin 違い）からは使えない
     assert request(app.base, "/pc/api/clip/phone-image", method="POST", json_body={})[0] == 403
+
+
+# ---- ショートカット 1 つで複数の PC へ（転送） -------------------------------------
+OWNER = "owner@example.com"
+
+
+def owned_status(**peers) -> dict:
+    status = ts_status()
+    status["Self"]["UserID"] = 42
+    status["User"] = {"42": {"ID": 42, "LoginName": OWNER}, "7": {"ID": 7, "LoginName": "someone@example.com"}}
+    status["Peer"] = peers
+    return status
+
+
+def relay_request(app, text: str, login: str | None = OWNER, headers: dict | None = None):
+    supplied = {"X-ClipBridge-Relay": "1", "X-Forwarded-For": "100.64.0.9"}
+    if login is not None:
+        supplied["Tailscale-User-Login"] = login
+    supplied.update(headers or {})
+    return request(app.base, "/api/relay/clip", method="POST", data=text.encode("utf-8"), headers=supplied)
+
+
+def test_tailnet_owner_login():
+    assert server.tailnet_owner_login(owned_status()) == OWNER
+    assert server.tailnet_owner_login(ts_status()) is None  # UserID がない
+    tagged = owned_status()
+    tagged["Self"]["Tags"] = ["tag:server"]
+    assert server.tailnet_owner_login(tagged) is None  # タグ付きの機器は持ち主を確かめられない
+    assert server.tailnet_owner_login(None) is None
+
+
+def test_relay_accepts_only_same_tailscale_account(app):
+    app.fake_tailscale._status = owned_status()
+    sent = []
+    app.relay_post = lambda url, text: sent.append((url, text))
+    status, _, body = relay_request(app, "転送された文")
+    assert status == 200 and as_json(body)["ok"] is True
+    assert app.fake_clipboard.text == "転送された文"
+    clip = as_json(request(app.base, "/api/clip", token=app.token)[2])
+    assert clip["source"] == "phone" and clip["via"] == "relay"
+    time.sleep(0.2)
+    assert sent == []  # 転送で届いたものは再転送しない（ループ防止）
+    # 別のアカウント / 本人確認なし / 独自ヘッダーなし / ブラウザー（Origin 付き）は断る
+    assert relay_request(app, "x", login="someone@example.com")[0] == 403
+    assert relay_request(app, "x", login=None)[0] == 403
+    assert relay_request(app, "x", headers={"X-ClipBridge-Relay": "0"})[0] == 403
+    assert relay_request(app, "x", headers={"Origin": "https://evil.example"})[0] == 403
+    assert app.fake_clipboard.text == "転送された文"
+    # 転送をオフにした PC は受け取らない
+    assert admin(app, "relay", {"enabled": False})[0] == 200
+    assert relay_request(app, "y")[0] == 403
+    assert app.admin_status()["relay"]["enabled"] is False
+
+
+def test_relay_rejected_when_owner_unknown(app):
+    app.fake_tailscale._status = ts_status()  # 持ち主のアカウントが分からない
+    assert relay_request(app, "x")[0] == 403
+
+
+def test_shortcut_text_is_relayed_to_other_pcs(app):
+    app.fake_tailscale._status = owned_status(
+        a={"HostName": "desk", "DNSName": "desk.example.ts.net.", "Online": True, "OS": "windows", "UserID": 42},
+        b={"HostName": "laptop", "DNSName": "laptop.example.ts.net.", "Online": True, "OS": "windows", "UserID": 42},
+    )
+    app.probe = lambda url: {"app": "ClipBridge", "pc_name": "Desk-PC" if "desk" in url else "Laptop"} if url.endswith(":8443/") else None
+    sent = []
+
+    def fake_post(url, text):
+        if "laptop" in url:
+            raise OSError("unreachable")
+        sent.append((url, text))
+
+    app.relay_post = fake_post
+    # アプリ（Safari）からの送信は転送しない
+    assert request(app.base, "/api/clip", method="POST", token=app.token, data="アプリから".encode()).__getitem__(0) == 200
+    time.sleep(0.3)
+    assert sent == []
+    # ショートカットからの送信は、ほかの PC へ転送する
+    status = request(app.base, "/api/clip", method="POST", token=app.token, data="ショートカットから".encode(), headers={"User-Agent": "Shortcuts/1.0"})[0]
+    assert status == 200 and app.fake_clipboard.text == "ショートカットから"
+    assert _wait_until(lambda: app.last_relay is not None)
+    assert sent == [("https://desk.example.ts.net:8443/", "ショートカットから")]
+    assert app.last_relay["sent"] == ["Desk-PC"] and app.last_relay["failed"] == ["Laptop"]
+    assert app.admin_status()["relay"]["last"]["sent"] == ["Desk-PC"]
+    # 転送をオフにすると送らない
+    app.last_relay = None
+    assert admin(app, "relay", {"enabled": False})[0] == 200
+    request(app.base, "/api/clip", method="POST", token=app.token, data="オフ".encode(), headers={"User-Agent": "Shortcuts/1.0"})
+    time.sleep(0.3)
+    assert app.last_relay is None and len(sent) == 1
