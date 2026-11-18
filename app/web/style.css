@@ -434,6 +434,7 @@ select.text-input { appearance: auto; }
   .update-toast-actions .btn { flex: 1 1 auto; }
 }
 
+.phone-image-row { display: grid; gap: 6px; margin-top: 10px; }
 .send-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; }
 .send-row textarea { margin: 0; }
 @media (max-width: 480px) {
@@ -441,4 +442,102 @@ select.text-input { appearance: auto; }
 }
 @media (max-width: 480px) {
   .kv { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---- ダッシュボードの枠: サイドバー（広い画面）/ ハンバーガーのドロワー（狭い画面）+ ページ切り替え ----
+   body.has-nav のときだけ有効（PC 画面は常に、iPhone 画面はメイン画面のときだけ app.js が付ける） */
+:root { --sidebar-w: 236px; --topbar-h: 64px; }
+.topbar .brand { margin-right: auto; }
+.nav-toggle {
+  display: none; place-items: center; flex: none;
+  width: 44px; height: 44px; padding: 0; margin-left: -6px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text);
+  position: relative;
+}
+.nav-toggle svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+/* 閉じたドロワーの中に新着があるときは、ボタンにも点を出す */
+.nav-toggle::after {
+  content: ""; position: absolute; top: 7px; right: 7px; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--ok); border: 2px solid var(--card); display: none;
+}
+body:has(.nav-list a.has-news) .nav-toggle::after { display: block; }
+
+.shell { display: block; }
+.sidebar { display: none; }
+.nav-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.nav-list a {
+  display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 10px 12px;
+  border-radius: 12px; color: var(--text); text-decoration: none; font-weight: 600; font-size: 0.95rem;
+}
+.nav-list a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
+.nav-list a.has-news::after { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--ok); margin-left: auto; flex: none; }
+.nav-label { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.nav-icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+@media (hover: hover) {
+  .nav-list a:not([aria-current="page"]):hover { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
+}
+.nav-scrim { position: fixed; inset: 0; z-index: 35; background: rgba(10, 16, 24, 0.42); }
+
+/* 1 ページ = 1 つの [data-pane]。nav.js が表示中以外を hidden にする */
+.pane { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); min-width: 0; align-content: start; }
+.pane-title { font-size: clamp(1.25rem, 4.6vw, 1.5rem); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pane-title:focus { outline: none; }
+.pane-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); align-items: start; min-width: 0; }
+.sr-only {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ダッシュボードの概要タイル（PC 画面） */
+.stat-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.stat {
+  display: grid; gap: 2px; align-content: start; height: 100%;
+  padding: 14px 16px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow);
+  color: var(--text); text-decoration: none; min-width: 0;
+}
+.stat-label { color: var(--muted); font-size: 0.8rem; font-weight: 700; }
+.stat-value { font-size: 1.15rem; font-weight: 800; line-height: 1.35; overflow-wrap: anywhere; }
+.stat-sub { color: var(--muted); font-size: 0.8rem; overflow-wrap: anywhere; }
+.stat[data-state="ok"] .stat-value { color: var(--ok); }
+.stat[data-state="warn"] .stat-value { color: var(--warn); }
+.stat[data-state="err"] .stat-value { color: var(--err); }
+@media (hover: hover) { .stat:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); } }
+
+/* 広い画面: サイドバーを常に表示し、本文は横に広く使う */
+@media (min-width: 960px) {
+  .has-nav .topbar { min-height: var(--topbar-h); }
+  .has-nav .shell { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); align-items: start; }
+  .has-nav .sidebar {
+    display: block; position: sticky; top: var(--topbar-h);
+    height: calc(100dvh - var(--topbar-h)); overflow-y: auto;
+    padding: var(--gap) 12px; border-right: 1px solid var(--line);
+  }
+  .has-nav main { max-width: 1120px; }
+  .app.has-nav .pane-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1200px) {
+  /* 接続ページ: 1（Tailscale）と 2（QR）を横に並べ、3（ホーム画面に追加）は下に全幅 */
+  .pc [data-pane="connect"] .pane-grid { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+  .pc [data-pane="connect"] [aria-labelledby="step3"] { grid-column: 1 / -1; }
+}
+
+/* 狭い画面: ハンバーガーで開くドロワー */
+@media (max-width: 959px) {
+  .has-nav .nav-toggle { display: inline-grid; }
+  .has-nav .sidebar {
+    display: block; position: fixed; z-index: 40; top: 0; bottom: 0; left: 0;
+    width: min(300px, 84vw); overflow-y: auto;
+    padding: calc(16px + env(safe-area-inset-top, 0px)) 12px calc(16px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px));
+    background: var(--card); border-right: 1px solid var(--line); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
+    transform: translateX(-105%); visibility: hidden;
+    transition: transform 0.22s ease, visibility 0s linear 0.22s;
+  }
+  .has-nav.nav-open .sidebar { transform: none; visibility: visible; transition: transform 0.22s ease; }
+  body.nav-open { overflow: hidden; }
+}
+/* 狭い画面: ハンバーガー・ロゴ・状態を 1 行に収める */
+@media (max-width: 520px) {
+  .has-nav .topbar { flex-wrap: nowrap; }
+  .has-nav .brand .sub { display: none; }
+  .has-nav .topbar .pill { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }

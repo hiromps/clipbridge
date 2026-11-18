@@ -96,6 +96,7 @@ STATIC_FILES = {
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/pc.js": ("pc.js", "text/javascript; charset=utf-8"),
+    "/nav.js": ("nav.js", "text/javascript; charset=utf-8"),
     "/vendor/qrcode.js": ("vendor/qrcode.js", "text/javascript; charset=utf-8"),
     "/icon-180.png": ("icon-180.png", "image/png"),
     "/icon-512.png": ("icon-512.png", "image/png"),
@@ -1963,7 +1964,7 @@ def self_test(output: Path) -> None:
             with urllib.request.urlopen(base + "/api/health", timeout=5) as response:
                 if json.load(response).get("app") != APP_NAME:
                     raise RuntimeError("health check failed")
-            for path in ("/", "/style.css", "/app.js", "/pc.js", "/vendor/qrcode.js", "/icon-180.png", "/icon-512.png"):
+            for path in ("/", "/style.css", "/app.js", "/pc.js", "/nav.js", "/vendor/qrcode.js", "/icon-180.png", "/icon-512.png"):
                 with urllib.request.urlopen(base + path, timeout=5) as response:
                     if response.status != 200 or not response.read():
                         raise RuntimeError(f"missing {path}")
@@ -2014,6 +2015,7 @@ class ClipBridgeApp:
         configured_dir = self.config.get("image_dir")
         self.image_dir = image_dir or (Path(configured_dir) if isinstance(configured_dir, str) and configured_dir else default_image_dir())
         self.last_image: dict | None = None
+        self._last_phone_image: bytes | None = None  # iPhone から最後に届いた画像の中身（PC 画面からコピーし直す用）
         # Pro
         self.license = parse_license(self._stored_license())
         self.license_refresher = license_refresher or fetch_license_refresh
@@ -2504,6 +2506,7 @@ class ClipBridgeApp:
             self._cycle_index = 0
             self.record_image(data, info, "phone")
         name = target.name if target else f"{safe_stem(original_name)}.{ext}"
+        self._last_phone_image = data
         self.last_image = {
             "name": name,
             "path": str(target) if target else None,
@@ -2529,6 +2532,25 @@ class ClipBridgeApp:
             "clipboard": warning is None,
             "warning": warning,
         }
+
+    def copy_last_phone_image(self) -> dict:
+        """iPhone から最後に届いた画像を、PC のクリップボードにもう一度入れる（PC 画面のボタン用）。
+
+        リモートデスクトップに奪われた・別の内容をコピーしたなどで、届いた画像がクリップボードから消えたとき用。
+        """
+        data = self._last_phone_image
+        if data is None:
+            raise LookupError("iPhone から届いた画像がありません")
+        with self._clip_lock:
+            self.clipboard.write_image(data)
+            self._own_sequence = self.clipboard.sequence()
+            self._remember_own_image(data)
+        # 元は iPhone から届いた画像なので source は phone（iPhone 側で新着扱いにしない）
+        self.state.set("", "image", "phone", self._store_image(data))
+        self._cycle_index = 0
+        if self.last_image is not None:
+            self.last_image = {**self.last_image, "clipboard": True}
+        return {"ok": True, "name": (self.last_image or {}).get("name"), "size": len(data)}
 
     # --- Tailscale ---------------------------------------------------------
     def tailscale_summary(self, force: bool = False) -> dict:
@@ -2688,7 +2710,7 @@ class ClipBridgeApp:
                 "hash": snapshot["hash"], "source": snapshot["source"], "image": snapshot["image"],
             },
             "image_dir": str(self.image_dir),
-            "last_image": self.last_image,
+            "last_image": None if self.last_image is None else {**self.last_image, "copyable": self._last_phone_image is not None},
             "pro": self.pro,
             "license": self.license_status(),
             "history": {"enabled": self.history_enabled, **self.history.counts(), "limit": HISTORY_LIMIT},
@@ -3300,6 +3322,17 @@ def make_handler(app: ClipBridgeApp):
                     return self._error(500, "clipboard", "PC のクリップボードへ書き込めませんでした")
                 app.log(f"clipboard written from dashboard: {len(text)} chars")
                 return self._json(200, {"ok": True, "length": len(text), "hash": snapshot["hash"]})
+            if action == "clip/phone-image":
+                # iPhone から最後に届いた画像を、PC のクリップボードにもう一度入れる
+                try:
+                    result = app.copy_last_phone_image()
+                except LookupError as exc:
+                    return self._error(404, "not_found", str(exc))
+                except Exception as exc:  # noqa: BLE001 - 内容は出さない
+                    app.log(f"clipboard image failed: {type(exc).__name__}")
+                    return self._error(500, "clipboard", f"PC のクリップボードに入れられませんでした: {exc}")
+                app.log("clipboard image copied again from dashboard")
+                return self._json(200, result)
             if action == "pair-code":
                 code = app.pairing.rotate()
                 return self._json(200, {"ok": True, "pair_code": code})

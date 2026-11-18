@@ -243,7 +243,7 @@ def test_write_validation(app):
 
 
 def test_static_files_and_apple_touch_icon_aliases(app):
-    for path in ("/style.css", "/app.js", "/pc.js", "/vendor/qrcode.js", "/icon-180.png", "/icon-512.png"):
+    for path in ("/style.css", "/app.js", "/pc.js", "/nav.js", "/vendor/qrcode.js", "/icon-180.png", "/icon-512.png"):
         status, _, body = request(app.base, path)
         assert status == 200 and body, path
     for path in ("/apple-touch-icon.png", "/apple-touch-icon-120x120-precomposed.png"):
@@ -1746,3 +1746,23 @@ def test_unreadable_image_is_not_restored_after_other_content(app):
     assert _wait_until(lambda: as_json(request(app.base, "/pc/api/clip")[2])["kind"] == "image")
     time.sleep(0.5)
     assert app.fake_clipboard.image_data is None
+
+
+def test_dashboard_copies_last_phone_image_again(app):
+    """PC 画面のボタンで、iPhone から最後に届いた画像をクリップボードにもう一度入れられる。"""
+    status, _, body = admin(app, "clip/phone-image")
+    assert status == 404  # まだ届いていない
+    assert app.admin_status()["last_image"] is None
+    png = tiny_png(4, 4)
+    assert upload(app, png, name="IMG_7802.png", save=False)[0] == 200
+    assert app.admin_status()["last_image"]["copyable"] is True
+    # 別の内容をコピーして、届いた画像がクリップボードから消えた状態にする
+    app.fake_clipboard.external_copy("PC でコピーした文")
+    assert _wait_until(lambda: as_json(request(app.base, "/pc/api/clip")[2])["kind"] == "text")
+    status, _, body = admin(app, "clip/phone-image")
+    assert status == 200 and as_json(body)["name"] == "IMG_7802.png"
+    assert app.fake_clipboard.image_data == png
+    clip = as_json(request(app.base, "/pc/api/clip")[2])
+    assert clip["kind"] == "image" and clip["source"] == "phone" and clip["image"]["width"] == 4
+    # PC 画面以外（Origin 違い）からは使えない
+    assert request(app.base, "/pc/api/clip/phone-image", method="POST", json_body={})[0] == 403

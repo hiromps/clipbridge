@@ -10,7 +10,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 FILES = [
     "server.py", "ClipBridge.bat", "README.md", "WINDOWS-README.txt", "requirements-dev.txt",
-    "web/index.html", "web/app.js", "web/pc.html", "web/pc.js", "web/style.css",
+    "web/index.html", "web/app.js", "web/pc.html", "web/pc.js", "web/nav.js", "web/style.css",
     "web/sw.js", "web/icon-180.png", "web/icon-512.png", "web/vendor/qrcode.js", "web/vendor/LICENSE-qrcode-generator.txt",
     "tests/test_server.py", "tools/make_icons.py",
 ]

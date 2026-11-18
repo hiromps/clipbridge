@@ -67,10 +67,21 @@
     licensePortalBtn: $('licensePortalBtn'),
     proMsg: $('proMsg'),
     clipBadge: $('clipBadge'),
+    statTailscale: $('statTailscale'),
+    statTailscaleSub: $('statTailscaleSub'),
+    statPhones: $('statPhones'),
+    statPhonesSub: $('statPhonesSub'),
+    statPlan: $('statPlan'),
+    statPlanSub: $('statPlanSub'),
+    statVersion: $('statVersion'),
+    statVersionSub: $('statVersionSub'),
     clipMeta: $('clipMeta'),
     clipText: $('clipText'),
     clipImageWrap: $('clipImageWrap'),
     clipImage: $('clipImage'),
+    phoneImageRow: $('phoneImageRow'),
+    phoneImageCopyBtn: $('phoneImageCopyBtn'),
+    phoneImageMsg: $('phoneImageMsg'),
     pcSendText: $('pcSendText'),
     pcSendBtn: $('pcSendBtn'),
     pcSendMsg: $('pcSendMsg'),
@@ -135,12 +146,35 @@
     els.imageExample.textContent = rules.example || '—';
     els.imageRulesLock.hidden = !!status.pro;
     const last = status.last_image;
+    renderPhoneImageCopy(last);
     if (!last) { els.imageLast.textContent = ''; return; }
     const notes = [formatBytes(last.size), relativeTime(last.received, status.now)];
     if (!last.saved) notes.push('クリップボードのみ');
     if (!last.clipboard) notes.push('クリップボードには入れられませんでした');
     els.imageLast.textContent = `最後に受け取った画像: ${last.name}（${notes.join(' ・ ')}）`;
   }
+
+  // ---- iPhone から届いた画像をクリップボードにコピーし直す -------------------------
+  function renderPhoneImageCopy(last) {
+    const copyable = !!(last && last.copyable);
+    els.phoneImageRow.hidden = !copyable;
+    if (copyable) els.phoneImageCopyBtn.textContent = `iPhone から届いた画像をコピー（${last.name}）`;
+  }
+
+  els.phoneImageCopyBtn.addEventListener('click', async () => {
+    els.phoneImageCopyBtn.disabled = true;
+    try {
+      const result = await adminPost('clip/phone-image');
+      els.phoneImageMsg.textContent = `クリップボードにコピーしました（${result.name || '画像'}）。Ctrl+V で貼り付けられます。`;
+      els.phoneImageMsg.className = 'msg ok';
+      poll();
+    } catch (error) {
+      els.phoneImageMsg.textContent = error.message;
+      els.phoneImageMsg.className = 'msg error';
+    } finally {
+      els.phoneImageCopyBtn.disabled = false;
+    }
+  });
 
   // ---- PC のクリップボード（iPhone 画面と同じカード） ----------------------------
   function clipMetaText(clip, now) {
@@ -177,6 +211,7 @@
     els.clipMeta.textContent = clipMetaText(clip, now);
     if (changed && !clipFirstLoad) {
       els.clipBadge.hidden = clip.source !== 'phone';
+      if (clip.source === 'phone' && window.ClipNav) window.ClipNav.notify('home');
       const target = hasImage ? els.clipImageWrap : els.clipText;
       target.classList.remove('flash');
       void target.offsetWidth;
@@ -760,6 +795,34 @@
     toast('次に新しいバージョンが出たときにまたお知らせします。下の「アップデート」からいつでも更新できます。');
   });
 
+  // ---- ダッシュボードの概要（各タイルから該当ページへ移れる） -----------------------
+  function setStat(value, sub, text, subText, state) {
+    value.textContent = text;
+    sub.textContent = subText;
+    value.parentElement.dataset.state = state || '';
+  }
+
+  function renderSummary(status) {
+    const checks = (status.tailscale && status.tailscale.checks) || [];
+    const failed = checks.filter((check) => check.state !== 'ok');
+    if (!checks.length) setStat(els.statTailscale, els.statTailscaleSub, '確認中…', '', '');
+    else if (!failed.length) setStat(els.statTailscale, els.statTailscaleSub, '準備完了', 'すべての確認項目が OK', 'ok');
+    else setStat(els.statTailscale, els.statTailscaleSub, '要対応', failed[0].label, failed.some((c) => c.state === 'fail') ? 'err' : 'warn');
+    const devices = status.devices || [];
+    setStat(els.statPhones, els.statPhonesSub,
+      status.subscribers ? `接続中 ${status.subscribers} 台` : '待機中',
+      devices.length ? `${devices[0].name} ・ ${relativeTime(devices[0].last_seen, status.now)}` : 'QR コードで接続',
+      status.subscribers ? 'ok' : '');
+    const license = status.license || {};
+    setStat(els.statPlan, els.statPlanSub, status.pro ? 'Pro' : '無料版',
+      status.pro ? (license.expires ? `${license.expires} まで` : '無期限') : 'Pro で履歴・ホットキーなど',
+      status.pro ? 'ok' : '');
+    const update = status.update || {};
+    setStat(els.statVersion, els.statVersionSub, update.current || status.version,
+      update.available ? `新しい版 ${update.latest} があります` : (update.checked_at ? '最新です' : '確認中…'),
+      update.available ? 'warn' : '');
+  }
+
   function render(status) {
     lastStatus = status;
     if (restarting && status.started > restartAt) {
@@ -768,6 +831,7 @@
       toast(`アップデートが完了しました（${status.version}）`, 'ok');
     }
     renderChecks(status.tailscale);
+    renderSummary(status);
     renderUpdate(status);
     renderImages(status);
     renderPro(status);
