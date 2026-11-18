@@ -15,6 +15,8 @@
     newCodeBtn: $('newCodeBtn'),
     devices: $('devices'),
     startupToggle: $('startupToggle'),
+    relayToggle: $('relayToggle'),
+    relayLast: $('relayLast'),
     startupMsg: $('startupMsg'),
     rotateBtn: $('rotateBtn'),
     stopBtn: $('stopBtn'),
@@ -843,6 +845,7 @@
     els.pairCode.textContent = status.pair_code;
     renderQr(status.pair_url);
     renderDevices(status.devices, status.now);
+    renderRelay(status);
     els.startupToggle.checked = status.startup.enabled;
     els.startupToggle.disabled = !status.startup.supported;
     els.startupMsg.textContent = status.startup.supported
@@ -905,6 +908,34 @@
       poll();
     } catch (error) {
       toast(error.message, 'error');
+    }
+  });
+
+  // ---- ほかの PC への転送 ----------------------------------------------------------
+  function renderRelay(status) {
+    const relay = status.relay || {};
+    if (document.activeElement !== els.relayToggle) els.relayToggle.checked = !!relay.enabled;
+    const last = relay.last;
+    if (!relay.enabled || !last) { els.relayLast.textContent = ''; return; }
+    const parts = [];
+    if (last.sent.length) parts.push(`${last.sent.join('・')} に届きました`);
+    if (last.failed.length) parts.push(`${last.failed.join('・')} には届きませんでした（相手の ClipBridge が古いか、転送がオフです）`);
+    if (!parts.length) parts.push('転送先の PC が見つかりませんでした');
+    els.relayLast.textContent = `最後の転送（${relativeTime(last.at, status.now)}）: ${parts.join('。')}`;
+  }
+
+  els.relayToggle.addEventListener('change', async () => {
+    const enabled = els.relayToggle.checked;
+    els.relayToggle.disabled = true;
+    try {
+      await adminPost('relay', { enabled });
+      toast(enabled ? 'ほかの PC への転送をオンにしました' : 'ほかの PC への転送をオフにしました');
+    } catch (error) {
+      els.relayToggle.checked = !enabled;
+      toast(error.message, 'error');
+    } finally {
+      els.relayToggle.disabled = false;
+      poll();
     }
   });
 

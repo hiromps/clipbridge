@@ -1437,6 +1437,31 @@ def tailnet_peers(status: dict | None) -> list[dict]:
     return peers
 
 
+def tailnet_owner_login(status: dict | None) -> str | None:
+    """この PC を Tailscale に登録しているアカウント（LoginName）。タグ付きの機器や取得できないときは None。"""
+    me = (status or {}).get("Self") or {}
+    if me.get("Tags") or me.get("UserID") is None:
+        return None
+    user = ((status or {}).get("User") or {}).get(str(me.get("UserID"))) or {}
+    login = user.get("LoginName")
+    return login if isinstance(login, str) and login else None
+
+
+RELAY_HEADER = "X-ClipBridge-Relay"
+
+
+def post_relay_clip(url: str, text: str, timeout: float = 5.0) -> None:
+    """ほかの PC の ClipBridge（url は https://pc.tailnet.ts.net:8443/ など）へ文字を転送する。失敗は例外。"""
+    request = urllib.request.Request(
+        url + "api/relay/clip",
+        data=text.encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "text/plain; charset=utf-8", "User-Agent": f"{APP_NAME}/{__version__}", RELAY_HEADER: "1"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        response.read(4096)
+
+
 def probe_clipbridge(url: str, opener=urllib.request.urlopen, timeout: float = 2.0) -> dict | None:
     """url（https://pc.tailnet.ts.net/ など）で ClipBridge が応答するか確認し、health の内容を返す。"""
     request = urllib.request.Request(url + "api/health", headers={"User-Agent": f"{APP_NAME}/{__version__}"})
@@ -2002,6 +2027,7 @@ class ClipBridgeApp:
         web_dir: Path = WEB_DIR,
         updater: Updater | None = None,
         probe=None,
+        relay_post=None,
         image_dir: Path | None = None,
         history_path: Path | None = None,
         license_refresher=None,
@@ -2026,6 +2052,8 @@ class ClipBridgeApp:
         self._license_refresh_error: str | None = None
         self.history = ClipHistory(history_path or config_path.with_name("history.json"))
         self.history_enabled = bool(self.config.get("history_enabled", True))
+        # ショートカットで届いた文字を、同じ Tailscale アカウントのほかの PC と転送しあう（送る・受け取るの両方）
+        self.relay_enabled = bool(self.config.get("relay_enabled", True))
         self.image_rules = {
             "subfolder": self.config.get("image_subfolder") if self.config.get("image_subfolder") in IMAGE_SUBFOLDERS else "none",
             "template": self.config.get("image_template") if validate_image_template(self.config.get("image_template") or "") is None else DEFAULT_IMAGE_TEMPLATE,
@@ -2055,6 +2083,8 @@ class ClipBridgeApp:
         self._peers_lock = threading.Lock()
         self._peers_cache: tuple[float, dict | None] = (0.0, None)
         self.probe = probe or probe_clipbridge
+        self.relay_post = relay_post or post_relay_clip
+        self.last_relay: dict | None = None  # 最後にほかの PC へ転送した結果（PC 画面に出す）
         self.serve_result: dict | None = None
         self.stopping = False
         self.started = time.time()
@@ -2288,6 +2318,45 @@ class ClipBridgeApp:
         self.history_enabled = bool(enabled)
         self.config["history_enabled"] = self.history_enabled
         save_config(self.config_path, self.config)
+
+    # --- ほかの PC への転送（ショートカット 1 つで全部の PC に届ける） -------------------
+    def set_relay_enabled(self, enabled: bool) -> None:
+        self.relay_enabled = bool(enabled)
+        self.config["relay_enabled"] = self.relay_enabled
+        save_config(self.config_path, self.config)
+
+    def owner_login(self) -> str | None:
+        self.tailscale_summary(force=True)  # 持ち主の確認は常に最新の状態で（転送のたびに 1 回だけ）
+        with self._ts_lock:
+            status = self._ts_status
+        return tailnet_owner_login(status)
+
+    def relay_text(self, text: str) -> dict:
+        """同じ tailnet で動いているほかの ClipBridge へ文字を転送し、結果を返す（届いた PC 名 / 届かなかった PC 名）。"""
+        peers = self.discover_peers().get("peers", [])
+        sent: list[str] = []
+        failed: list[str] = []
+
+        def send(peer: dict) -> tuple[str, bool]:
+            try:
+                self.relay_post(peer["url"], text)
+                return peer["name"], True
+            except Exception as exc:  # noqa: BLE001 - 届かなかった PC 名だけ残す
+                self.log(f"relay to {peer['host']} failed: {type(exc).__name__}")
+                return peer["name"], False
+
+        if peers:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(peers))) as pool:
+                for name, ok in pool.map(send, peers):
+                    (sent if ok else failed).append(name)
+        self.last_relay = {"at": time.time(), "sent": sent, "failed": failed}
+        if peers:
+            self.log(f"relayed to {len(sent)} PC(s), failed {len(failed)}")
+        return self.last_relay
+
+    def relay_text_async(self, text: str) -> None:
+        if self.relay_enabled:
+            threading.Thread(target=self.relay_text, args=(text,), name="clip-relay", daemon=True).start()
 
     def restore_entry(self, entry_id: str, source: str = "pc") -> dict:
         """履歴の項目を PC のクリップボードに戻す（再送）。iPhone には SSE で届く。"""
@@ -2714,6 +2783,7 @@ class ClipBridgeApp:
             "pro": self.pro,
             "license": self.license_status(),
             "history": {"enabled": self.history_enabled, **self.history.counts(), "limit": HISTORY_LIMIT},
+            "relay": {"enabled": self.relay_enabled, "last": self.last_relay},
             "image_rules": self.image_settings(),
             "hotkeys": self.hotkey_status(),
             "config_path": str(self.config_path),
@@ -3196,6 +3266,8 @@ def make_handler(app: ClipBridgeApp):
                 return self._pair()
             if path == "/api/clip":
                 return self._write_clip()
+            if path == "/api/relay/clip":
+                return self._relay_clip()
             if path == "/api/image":
                 return self._write_image()
             if path.startswith("/api/history/"):
@@ -3270,6 +3342,41 @@ def make_handler(app: ClipBridgeApp):
                 return self._error(500, "clipboard", "PC のクリップボードへ書き込めませんでした")
             app.record_device(self)
             app.log(f"clipboard written: {len(text)} chars")
+            if via == "shortcut":
+                app.relay_text_async(text)  # ショートカット 1 つで、ほかの PC にも届ける
+            self._json(200, {"ok": True, "length": len(text), "hash": snapshot["hash"]})
+
+        def _relay_clip(self) -> None:
+            """ほかの PC から転送された文字を受け取る。
+
+            トークンの代わりに Tailscale の本人確認を使う: Tailscale Serve が付ける Tailscale-User-Login が、
+            この PC の持ち主と同じアカウントのときだけ受け付ける（Serve は送り手が付けた同名ヘッダーを上書きする）。
+            ブラウザーからの悪用（同じアカウントの端末で開いたサイトからの送信）を防ぐため、
+            Origin 付きの要求は断り、ブラウザーが事前確認なしには付けられない独自ヘッダーを必須にする。
+            """
+            body = self._read_body(MAX_BYTES)  # 先に読み切る（読まずに断ると送り手の接続が途中で切れる）
+            if body is None:
+                return
+            if not app.relay_enabled:
+                return self._error(403, "relay_disabled", "この PC はほかの PC からの転送を受け取らない設定です")
+            if self.headers.get(RELAY_HEADER) != "1" or self.headers.get("Origin") is not None:
+                return self._error(403, "forbidden", "転送は ClipBridge どうしでのみ使えます")
+            login = (self.headers.get("Tailscale-User-Login") or "").strip().lower()
+            owner = (app.owner_login() or "").strip().lower()
+            if not login or not owner or login != owner:
+                return self._error(403, "forbidden", "同じ Tailscale アカウントの PC からの転送だけ受け付けます")
+            if not (self.headers.get("Content-Type") or "").lower().startswith("text/plain"):
+                return self._error(415, "unsupported_media_type", "text/plain; charset=utf-8 で送ってください")
+            try:
+                text = body.decode("utf-8")
+            except UnicodeDecodeError:
+                return self._error(400, "bad_encoding", "UTF-8 のテキストが必要です")
+            try:
+                snapshot = app.write_clipboard(text, source="phone", via="relay")  # 転送で届いたものは再転送しない
+            except Exception as exc:  # noqa: BLE001 - 内容は出さない
+                app.log(f"clipboard write failed: {type(exc).__name__}")
+                return self._error(500, "clipboard", "PC のクリップボードへ書き込めませんでした")
+            app.log(f"clipboard written by relay: {len(text)} chars")
             self._json(200, {"ok": True, "length": len(text), "hash": snapshot["hash"]})
 
         def _write_image(self) -> None:
@@ -3322,6 +3429,9 @@ def make_handler(app: ClipBridgeApp):
                     return self._error(500, "clipboard", "PC のクリップボードへ書き込めませんでした")
                 app.log(f"clipboard written from dashboard: {len(text)} chars")
                 return self._json(200, {"ok": True, "length": len(text), "hash": snapshot["hash"]})
+            if action == "relay":
+                app.set_relay_enabled(bool(data.get("enabled")))
+                return self._json(200, {"ok": True, "enabled": app.relay_enabled})
             if action == "clip/phone-image":
                 # iPhone から最後に届いた画像を、PC のクリップボードにもう一度入れる
                 try:
