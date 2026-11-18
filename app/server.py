@@ -53,7 +53,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-__version__ = "2.6.0"
+__version__ = "2.7.0"
 APP_NAME = "ClipBridge"
 FROZEN = bool(getattr(sys, "frozen", False))  # PyInstaller でビルドした exe 版か
 ROOT = Path(__file__).resolve().parent
