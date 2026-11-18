@@ -166,7 +166,7 @@
       els.clipText.textContent = clip.text;
       els.clipText.classList.remove('empty');
     } else if (clip.kind === 'image') {
-      els.clipText.textContent = '（画像が入っていますが、表示できる形式ではありません）';
+      els.clipText.textContent = '（画像がコピーされていますが、中身を取り出せませんでした。もう一度コピーし直してください）';
       els.clipText.classList.add('empty');
       if (hasImage) els.clipImage.src = `/pc/api/clip/image?id=${encodeURIComponent(clip.image.id)}`;
     } else {

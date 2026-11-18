@@ -622,7 +622,7 @@
       els.clipText.classList.remove('empty');
       els.copyBtn.disabled = false;
     } else if (data.kind === 'image') {
-      els.clipText.textContent = '（画像が入っていますが、表示できる形式ではありません）';
+      els.clipText.textContent = '（画像がコピーされていますが、中身を取り出せませんでした。もう一度コピーし直してください）';
       els.clipText.classList.add('empty');
       els.copyBtn.disabled = !hasImage;
     } else {
