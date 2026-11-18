@@ -16,6 +16,9 @@
 </head>
 <body class="app">
   <header class="topbar">
+    <button id="navToggle" class="nav-toggle" type="button" aria-controls="sidebar" aria-expanded="false" aria-label="メニューを開く">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
     <div class="brand"><img src="/icon-180.png" alt="" width="30" height="30"><span>ClipBridge</span></div>
     <div id="conn" class="pill" aria-live="polite">確認中…</div>
     <button id="pcSwitch" class="pill switcher" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="pcMenu" hidden>
@@ -27,6 +30,17 @@
       <button id="addPcBtn" class="btn block" type="button">＋ PC を追加</button>
     </div>
   </header>
+
+  <div class="shell">
+    <nav id="sidebar" class="sidebar" aria-label="メニュー">
+      <ul class="nav-list">
+        <li><a href="#home" data-nav="home"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg><span class="nav-label">クリップボード</span></a></li>
+        <li><a href="#images" data-nav="images"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-9 9"/></svg><span class="nav-label">写真・画像</span></a></li>
+        <li><a href="#history" data-nav="history"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3 4v4h4"/><path d="M12 7.5V12l3 2"/></svg><span class="nav-label">履歴 <span class="badge pro">Pro</span></span></a></li>
+        <li><a href="#connection" data-nav="connection"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg><span class="nav-label">接続</span></a></li>
+      </ul>
+    </nav>
+    <div id="navScrim" class="nav-scrim" hidden></div>
 
   <main>
     <!-- ペアリング画面 -->
@@ -53,6 +67,9 @@
 
     <!-- メイン画面 -->
     <section id="mainView" class="view" hidden>
+      <section class="pane" data-pane="home" aria-labelledby="homeTitle">
+      <h1 id="homeTitle" class="pane-title sr-only" tabindex="-1">クリップボード</h1>
+      <div class="pane-grid">
       <section class="card" aria-labelledby="pcClipTitle">
         <div class="card-head">
           <h2 id="pcClipTitle">PC のクリップボード <span id="newBadge" class="badge" hidden>新着</span></h2>
@@ -78,6 +95,11 @@
         <textarea id="sendText" rows="3" placeholder="長押し → ペースト"></textarea>
         <p id="sendMsg" class="msg" aria-live="polite"></p>
       </section>
+      </div>
+      </section>
+
+      <section class="pane" data-pane="images" aria-labelledby="imagesPaneTitle">
+      <h1 id="imagesPaneTitle" class="pane-title sr-only" tabindex="-1">写真・画像</h1>
 
       <section class="card" aria-labelledby="imageTitle">
         <h2 id="imageTitle">写真・画像を PC へ</h2>
@@ -94,6 +116,10 @@
         <p class="hint">写真ライブラリ・カメラ・ファイルから選べます。HEIC の写真は iPhone 側で JPEG に変換して送ります。</p>
       </section>
 
+      </section>
+
+      <section class="pane" data-pane="history" aria-labelledby="historyPaneTitle">
+      <h1 id="historyPaneTitle" class="pane-title sr-only" tabindex="-1">履歴</h1>
       <section id="historyCard" class="card" aria-labelledby="historyTitle">
         <div class="card-head">
           <h2 id="historyTitle">履歴 <span class="badge pro">Pro</span></h2>
@@ -110,6 +136,10 @@
         </div>
       </section>
 
+      </section>
+
+      <section class="pane" data-pane="connection" aria-labelledby="connectionPaneTitle">
+      <h1 id="connectionPaneTitle" class="pane-title sr-only" tabindex="-1">接続</h1>
       <section id="a2hs" class="card tip" hidden>
         <h2>ホーム画面に追加するとアプリのように使えます</h2>
         <ol>
@@ -131,6 +161,7 @@
         <p id="updateNotice" class="hint" hidden></p>
         <button id="unpairBtn" class="btn ghost danger block" type="button">この PC の接続を解除</button>
         <p class="hint">解除すると、再接続には PC の画面に表示されているコードが必要です。</p>
+      </section>
       </section>
     </section>
 
@@ -246,8 +277,10 @@
       <button id="addCancelBtn" class="btn ghost block" type="button">戻る</button>
     </section>
   </main>
+  </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="/nav.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

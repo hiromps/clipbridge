@@ -200,6 +200,12 @@
   function vibrate() { if (navigator.vibrate) navigator.vibrate(15); }
 
   // ---- 画面切替 --------------------------------------------------------------
+  // サイドバー（ハンバーガー）はメイン画面のときだけ出す。接続・追加・初回セットアップは一本道の画面
+  function setNav(visible) {
+    document.body.classList.toggle('has-nav', visible);
+    if (!visible && window.ClipNav) window.ClipNav.close();
+  }
+
   function showPair(message, isError = true) {
     disconnect();
     closeMenu();
@@ -207,6 +213,7 @@
     els.addView.hidden = true;
     els.onboardView.hidden = true;
     els.pairView.hidden = false;
+    setNav(false);
     els.pcSwitch.hidden = true;
     els.conn.hidden = false;
     els.pairMsg.textContent = message || '';
@@ -220,6 +227,7 @@
     els.addView.hidden = true;
     els.onboardView.hidden = true;
     els.mainView.hidden = false;
+    setNav(true);
     els.conn.hidden = true;
     els.pcSwitch.hidden = false;
     els.pcSwitchName.textContent = displayName(active);
@@ -443,6 +451,7 @@
     els.pairView.hidden = true;
     els.onboardView.hidden = true;
     els.addView.hidden = false;
+    setNav(false);
     els.addForm.hidden = true;
     addTarget = null;
     els.addMsg.textContent = '';
@@ -634,6 +643,7 @@
     els.clipMeta.textContent = metaText(data);
     if (changed && !firstEvent) {
       els.newBadge.hidden = data.source === 'phone';
+      if (data.source !== 'phone' && window.ClipNav) window.ClipNav.notify('home');
       const target = hasImage ? els.clipImageWrap : els.clipText;
       target.classList.remove('flash');
       void target.offsetWidth;
@@ -1381,6 +1391,7 @@
     els.pairView.hidden = true;
     els.addView.hidden = true;
     els.onboardView.hidden = false;
+    setNav(false);
     els.conn.hidden = true;
     els.pcSwitch.hidden = false;
     els.pcSwitchName.textContent = displayName(active);
