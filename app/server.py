@@ -2036,6 +2036,9 @@ class ClipBridgeApp:
         self.clipboard = clipboard or detect_clipboard()
         self._clip_lock = threading.Lock()
         self._own_sequence = -1  # 自分がクリップボードに書いた直後の番号。監視スレッドが読み戻さないようにする
+        # 自分が最後にクリップボードへ入れた画像と、それを書き戻した回数（_restore_own_image を参照）
+        self._own_image: bytes | None = None
+        self._own_image_restores = 0
         self._image_lock = threading.Lock()
         self._image: tuple[bytes, dict] | None = None  # PC のクリップボードにある画像（iPhone へ配る本体とメタ情報）
         self.state = ClipState()
@@ -2077,10 +2080,14 @@ class ClipBridgeApp:
                 text, kind = self.clipboard.read()
                 image_data: bytes | None = None
                 if kind == "image":
-                    try:
-                        image_data = self.clipboard.read_image()
-                    except Exception as exc:  # noqa: BLE001 - プレビューなしで「画像」とだけ伝える
-                        self.log(f"clipboard image read failed: {type(exc).__name__}")
+                    image_data = self._read_clipboard_image()
+                    if image_data is None and not initial and self._own_image is not None:
+                        time.sleep(0.3)  # 一時的な失敗（元のアプリの描画待ち）なら 2 回目で読める
+                        image_data = self._read_clipboard_image()
+                        if image_data is None and self._restore_own_image():
+                            return
+                if kind != "image" or image_data is not None:
+                    self._remember_own_image(None)  # 読める内容に置き換わった。以後は書き戻さない
         except Exception as exc:  # noqa: BLE001 - 内容はログに出さない
             if initial:
                 self.log(f"clipboard read failed: {type(exc).__name__}")
@@ -2092,6 +2099,40 @@ class ClipBridgeApp:
                 self.record_text(text, "pc")
             elif kind == "image" and image_data:
                 self.record_image(image_data, info, "pc")
+
+    OWN_IMAGE_MAX_RESTORES = 3
+
+    def _read_clipboard_image(self) -> bytes | None:
+        try:
+            return self.clipboard.read_image()
+        except Exception as exc:  # noqa: BLE001 - プレビューなしで「画像」とだけ伝える
+            self.log(f"clipboard image read failed: {type(exc).__name__}")
+            return None
+
+    def _remember_own_image(self, data: bytes | None) -> None:
+        """自分がクリップボードへ入れた画像を覚える（テキストを入れたとき・読める内容に変わったときは None）。"""
+        self._own_image = data
+        self._own_image_restores = 0
+
+    def _restore_own_image(self) -> bool:
+        """「画像があるのに中身を取り出せない」状態を、自分が入れた画像で上書きして直す。_clip_lock を持って呼ぶ。
+
+        リモートデスクトップ（rdpclip）は、接続元の端末がクリップボードを通知し直すと所有者を奪い、
+        中身の要求には何も返さない。すると iPhone から届いた画像が、どのアプリでも貼り付けられない
+        「中身のない画像」に置き換わる。直前の内容が自分の画像のときだけ書き戻す。
+        中身を取り出せない画像はどこにも貼り付けられないので、書き戻して失うものはない。
+        """
+        if self._own_image is None or self._own_image_restores >= self.OWN_IMAGE_MAX_RESTORES:
+            return False
+        try:
+            self.clipboard.write_image(self._own_image)
+            self._own_sequence = self.clipboard.sequence()
+        except Exception as exc:  # noqa: BLE001
+            self.log(f"clipboard image restore failed: {type(exc).__name__}")
+            return False
+        self._own_image_restores += 1
+        self.log("clipboard image was unreadable (e.g. remote desktop); restored the last image")
+        return True
 
     # --- Pro ------------------------------------------------------------------
     def _stored_license(self) -> str | None:
@@ -2259,12 +2300,14 @@ class ClipBridgeApp:
             with self._clip_lock:
                 self.clipboard.write_image(data)
                 self._own_sequence = self.clipboard.sequence()
+                self._remember_own_image(data)
             self.state.set("", "image", source, self._store_image(data))
         else:
             text = entry.get("text", "")
             with self._clip_lock:
                 self.clipboard.write(text)
                 self._own_sequence = self.clipboard.sequence()
+                self._remember_own_image(None)
             self._store_image(None)
             self.state.set(normalize_newlines(text), "text" if text else "empty", source)
         return self.history.public(entry_id) or {}
@@ -2409,6 +2452,7 @@ class ClipBridgeApp:
         with self._clip_lock:
             self.clipboard.write(text)
             self._own_sequence = self.clipboard.sequence()
+            self._remember_own_image(None)
         normalized = normalize_newlines(text)
         self._store_image(None)
         self.state.set(normalized, "text" if normalized else "empty", source, via=via)
@@ -2447,6 +2491,7 @@ class ClipBridgeApp:
             with self._clip_lock:
                 self.clipboard.write_image(data)
                 self._own_sequence = self.clipboard.sequence()
+                self._remember_own_image(data)
         except Exception as exc:  # noqa: BLE001 - 理由だけ返す（内容は出さない）
             self.log(f"clipboard image failed: {type(exc).__name__}")
             warning = str(exc) or type(exc).__name__

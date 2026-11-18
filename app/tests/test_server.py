@@ -1706,3 +1706,43 @@ def test_windows_clipboard_applies_exif_orientation(tmp_path):
         assert server.image_dimensions(back) == (20, 40)  # 貼り付け用のビットマップは回転済み
     finally:
         clipboard.write(original_text if original_kind == "text" else "")
+
+
+def _wait_until(predicate, timeout: float = 3.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.05)
+    return predicate()
+
+
+def test_unreadable_image_after_phone_image_is_restored(app):
+    """リモートデスクトップ（rdpclip）に所有者を奪われ「中身のない画像」になったら、iPhone から届いた画像を書き戻す。"""
+    png = tiny_png(3, 3)
+    status, _, _ = upload(app, png, save=False)
+    assert status == 200 and app.fake_clipboard.image_data == png
+    # rdpclip が所有者になり、画像の形式はあるが中身を返さない状態を模倣する
+    app.fake_clipboard.external_copy("", kind="image")
+    assert _wait_until(lambda: app.fake_clipboard.image_data == png)
+    clip = as_json(request(app.base, "/pc/api/clip")[2])
+    assert clip["kind"] == "image" and clip["image"] is not None and clip["source"] == "phone"
+    # 何度も奪われ続けるなら、無限に書き戻さない（上限回数まで）
+    for _ in range(server.ClipBridgeApp.OWN_IMAGE_MAX_RESTORES - 1):
+        app.fake_clipboard.external_copy("", kind="image")
+        assert _wait_until(lambda: app.fake_clipboard.image_data == png)
+    app.fake_clipboard.external_copy("", kind="image")
+    time.sleep(0.8)
+    assert app.fake_clipboard.image_data is None
+
+
+def test_unreadable_image_is_not_restored_after_other_content(app):
+    """PC で別の内容をコピーしたあとは、昔の画像を書き戻さない。"""
+    png = tiny_png(3, 3)
+    assert upload(app, png, save=False)[0] == 200
+    app.fake_clipboard.external_copy("PC でコピーした文")
+    assert _wait_until(lambda: as_json(request(app.base, "/pc/api/clip")[2])["kind"] == "text")
+    app.fake_clipboard.external_copy("", kind="image")
+    assert _wait_until(lambda: as_json(request(app.base, "/pc/api/clip")[2])["kind"] == "image")
+    time.sleep(0.5)
+    assert app.fake_clipboard.image_data is None
