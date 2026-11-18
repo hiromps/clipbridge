@@ -445,7 +445,7 @@ select.text-input { appearance: auto; }
 }
 
 /* ---- ダッシュボードの枠: サイドバー（広い画面）/ ハンバーガーのドロワー（狭い画面）+ ページ切り替え ----
-   body.has-nav のときだけ有効（PC 画面は常に、iPhone 画面はメイン画面のときだけ app.js が付ける） */
+   body.has-nav.nav-ready のときだけ有効（PC 画面は常に、iPhone 画面はメイン画面のときだけ app.js が付ける） */
 :root { --sidebar-w: 236px; --topbar-h: 64px; }
 .topbar .brand { margin-right: auto; }
 .nav-toggle {
@@ -505,15 +505,15 @@ body:has(.nav-list a.has-news) .nav-toggle::after { display: block; }
 
 /* 広い画面: サイドバーを常に表示し、本文は横に広く使う */
 @media (min-width: 960px) {
-  .has-nav .topbar { min-height: var(--topbar-h); }
-  .has-nav .shell { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); align-items: start; }
-  .has-nav .sidebar {
+  .has-nav.nav-ready .topbar { min-height: var(--topbar-h); }
+  .has-nav.nav-ready .shell { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); align-items: start; }
+  .has-nav.nav-ready .sidebar {
     display: block; position: sticky; top: var(--topbar-h);
     height: calc(100dvh - var(--topbar-h)); overflow-y: auto;
     padding: var(--gap) 12px; border-right: 1px solid var(--line);
   }
-  .has-nav main { max-width: 1120px; }
-  .app.has-nav .pane-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .has-nav.nav-ready main { max-width: 1120px; }
+  .app.has-nav.nav-ready .pane-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (min-width: 1200px) {
   /* 接続ページ: 1（Tailscale）と 2（QR）を横に並べ、3（ホーム画面に追加）は下に全幅 */
@@ -523,8 +523,8 @@ body:has(.nav-list a.has-news) .nav-toggle::after { display: block; }
 
 /* 狭い画面: ハンバーガーで開くドロワー */
 @media (max-width: 959px) {
-  .has-nav .nav-toggle { display: inline-grid; }
-  .has-nav .sidebar {
+  .has-nav.nav-ready .nav-toggle { display: inline-grid; }
+  .has-nav.nav-ready .sidebar {
     display: block; position: fixed; z-index: 40; top: 0; bottom: 0; left: 0;
     width: min(300px, 84vw); overflow-y: auto;
     padding: calc(16px + env(safe-area-inset-top, 0px)) 12px calc(16px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px));
@@ -532,12 +532,12 @@ body:has(.nav-list a.has-news) .nav-toggle::after { display: block; }
     transform: translateX(-105%); visibility: hidden;
     transition: transform 0.22s ease, visibility 0s linear 0.22s;
   }
-  .has-nav.nav-open .sidebar { transform: none; visibility: visible; transition: transform 0.22s ease; }
+  .has-nav.nav-ready.nav-open .sidebar { transform: none; visibility: visible; transition: transform 0.22s ease; }
   body.nav-open { overflow: hidden; }
 }
 /* 狭い画面: ハンバーガー・ロゴ・状態を 1 行に収める */
 @media (max-width: 520px) {
-  .has-nav .topbar { flex-wrap: nowrap; }
-  .has-nav .brand .sub { display: none; }
-  .has-nav .topbar .pill { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .has-nav.nav-ready .topbar { flex-wrap: nowrap; }
+  .has-nav.nav-ready .brand .sub { display: none; }
+  .has-nav.nav-ready .topbar .pill { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }

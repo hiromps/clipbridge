@@ -103,4 +103,6 @@
 
   setOpen(false);
   show(paneFromHash() || fallback, { updateUrl: false });
+  // ここまで来たときだけメニューを出す（nav.js を読めなかったときは、全ページを縦に並べた従来の表示のまま）
+  document.body.classList.add('nav-ready');
 })();
